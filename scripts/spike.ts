@@ -6,9 +6,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { strFromU8, unzipSync } from "fflate";
 import * as mupdf from "mupdf";
+import { blockCachedHandle, type StreamHandle } from "../src/lib/pdf/fileStream.ts";
 import { epubToPdf, type Format, inspect, pdfToEpub } from "../src/tools/epub-pdf/engine/convert.ts";
 import { EpubBuilder } from "../src/tools/epub-pdf/engine/epub.ts";
-import { blockCachedHandle, type StreamHandle } from "../src/tools/epub-pdf/engine/fileStream.ts";
 
 const OUT = path.resolve("out");
 fs.mkdirSync(OUT, { recursive: true });

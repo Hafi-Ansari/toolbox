@@ -1,36 +1,24 @@
 // Conversion core. Runs inside the Web Worker in the app, and directly in
-// Node for tests and scripts. Inputs arrive as random-access stream handles so
-// they are never copied whole into WASM memory.
+// Node for tests and scripts. Opening, inspecting and reading PDF pages is
+// shared with other tools in src/lib/pdf/; EPUB packaging lives here.
 import * as mupdf from "mupdf";
-import { EpubBuilder, type NavEntry } from "./epub.ts";
-import type { StreamHandle } from "./fileStream.ts";
 import {
-	bodyFontSize,
-	type ImageBlock,
-	isJunkText,
-	type OutlineEntry,
-	type PageModel,
-	renderParas,
-	splitChapters,
-	stripFurniture,
-	toParagraphs,
-} from "./heuristics.ts";
+	flattenOutline,
+	meta,
+	type OutlineItem,
+	openDocument,
+	type Progress,
+	resolveOutline,
+} from "../../../lib/pdf/document.ts";
+import { extractPage, type PageImages } from "../../../lib/pdf/extract.ts";
+import type { StreamHandle } from "../../../lib/pdf/fileStream.ts";
+import { bodyFontSize, type PageModel, stripFurniture, toParagraphs } from "../../../lib/pdf/heuristics.ts";
+import { renderParas, splitChapters } from "./chapters.ts";
+import { EpubBuilder, type NavEntry } from "./epub.ts";
 import { type ChunkSink, crc32 } from "./zip.ts";
 
-export type Format = "pdf" | "epub";
-type OutlineItem = NonNullable<ReturnType<mupdf.Document["loadOutline"]>>[number];
-export type Progress = (done: number, total: number, phase: string) => void;
-
-export interface InputInfo {
-	format: Format;
-	title: string;
-	author: string;
-	/** PDF page count. EPUBs have no fixed pages until laid out, so this is 0. */
-	pages: number;
-	hasOutline: boolean;
-	/** True when sampled PDF pages carry almost no extractable text (likely a scan). */
-	looksScanned: boolean;
-}
+export type { Format, InputInfo, Progress } from "../../../lib/pdf/document.ts";
+export { inspect } from "../../../lib/pdf/document.ts";
 
 export interface EpubToPdfOptions {
 	/** Page size in points. */
@@ -56,52 +44,10 @@ export interface ConvertResult {
 	ms: number;
 }
 
-const MAGIC: Record<Format, string> = { pdf: "application/pdf", epub: "application/epub+zip" };
-
-function open(input: StreamHandle, format: Format): mupdf.Document {
-	const doc = mupdf.Document.openDocument(new mupdf.Stream(input), MAGIC[format]);
-	if (doc.needsPassword()) {
-		doc.destroy();
-		throw new Error("This file is password-protected. Remove the password and try again.");
-	}
-	return doc;
-}
-
-const meta = (doc: mupdf.Document, key: string) => (doc.getMetaData(key) ?? "").trim();
-
-export function inspect(input: StreamHandle, format: Format): InputInfo {
-	const doc = open(input, format);
-	try {
-		const title = meta(doc, "info:Title");
-		const author = meta(doc, "info:Author");
-		const outline = doc.loadOutline();
-		if (format === "epub") {
-			return { format, title, author, pages: 0, hasOutline: !!outline?.length, looksScanned: false };
-		}
-		const pages = doc.countPages();
-		// Sample up to 6 pages spread across the document.
-		const sample = [
-			...new Set(Array.from({ length: Math.min(6, pages) }, (_, i) => Math.floor((i * pages) / Math.min(6, pages)))),
-		];
-		let chars = 0;
-		for (const i of sample) {
-			const page = doc.loadPage(i);
-			const st = page.toStructuredText("");
-			chars += st.asText().replace(/\s+/g, "").length;
-			st.destroy();
-			page.destroy();
-		}
-		const looksScanned = sample.length > 0 && chars / sample.length < 40;
-		return { format, title, author, pages, hasOutline: !!outline?.length, looksScanned };
-	} finally {
-		doc.destroy();
-	}
-}
-
 /* ----------------------------------------------------------------------------- EPUB → PDF */
 
 export function epubToPdf(input: StreamHandle, opts: EpubToPdfOptions, progress: Progress): Uint8Array {
-	const doc = open(input, "epub");
+	const doc = openDocument(input, "epub");
 	const out = new mupdf.Buffer();
 	try {
 		progress(0, 0, "Laying out pages");
@@ -143,21 +89,6 @@ export function epubToPdf(input: StreamHandle, opts: EpubToPdfOptions, progress:
 	}
 }
 
-/** Outline items in reflowable documents carry a link (e.g. "OEBPS/ch1.xhtml"), not a page. */
-function resolveOutline(doc: mupdf.Document, items: OutlineItem[] | null): OutlineItem[] {
-	return (items ?? []).map((item) => {
-		let page = item.page;
-		if (typeof page !== "number" && item.uri) {
-			try {
-				page = doc.resolveLink(item.uri);
-			} catch {
-				page = undefined;
-			}
-		}
-		return { ...item, page, down: item.down ? resolveOutline(doc, item.down) : undefined };
-	});
-}
-
 function insertOutline(pdf: mupdf.PDFDocument, it: mupdf.OutlineIterator, items: OutlineItem[]): void {
 	for (const item of items) {
 		const uri =
@@ -177,24 +108,11 @@ function insertOutline(pdf: mupdf.PDFDocument, it: mupdf.OutlineIterator, items:
 
 /* ----------------------------------------------------------------------------- PDF → EPUB */
 
-function flattenOutline(items: OutlineItem[], level = 1, out: OutlineEntry[] = []): OutlineEntry[] {
-	for (const item of items) {
-		if (typeof item.page === "number" && item.page >= 0 && item.title?.trim()) {
-			out.push({ title: item.title.trim(), page: item.page, level });
-		}
-		if (item.down) flattenOutline(item.down, level + 1, out);
-	}
-	return out;
-}
-
-interface ImageSink {
-	add(image: mupdf.Image, width: number, height: number): { href: string; width: number; height: number } | null;
-	/** Stores an already-encoded JPEG (a rendered page). */
-	addJpeg(data: Uint8Array, width: number, height: number): { href: string; width: number; height: number };
-}
-
-/** Encodes images once each (identical images, like a repeated logo, are stored once). */
-function imageSink(book: EpubBuilder, quality: number): ImageSink {
+/**
+ * Stores pictures in the book. Embedded images are encoded once each (identical
+ * images, like a repeated logo, are stored once); whole pages render as JPEG.
+ */
+function bookImages(book: EpubBuilder, quality: number): PageImages {
 	const seen = new Map<string, { href: string; width: number; height: number }>();
 	let n = 0;
 	return {
@@ -228,143 +146,19 @@ function imageSink(book: EpubBuilder, quality: number): ImageSink {
 				pix?.destroy();
 			}
 		},
-		addJpeg(data, width, height) {
-			const href = `images/img${++n}.jpg`;
-			book.addImage(href, "image/jpeg", data);
-			return { href, width, height };
+		render(page) {
+			// Composites a scan's image layers into one picture.
+			const scale = 150 / 72;
+			const pix = page.toPixmap(mupdf.Matrix.scale(scale, scale), mupdf.ColorSpace.DeviceRGB, false, true);
+			try {
+				const href = `images/img${++n}.jpg`;
+				book.addImage(href, "image/jpeg", pix.asJPEG(quality).slice());
+				return { href, width: pix.getWidth(), height: pix.getHeight() };
+			} finally {
+				pix.destroy();
+			}
 		},
 	};
-}
-
-/** Share of the page an image covers. Scanned pages are one page-sized image (or a few stacked layers). */
-function coverage(bbox: number[], bounds: number[]): number {
-	const w = Math.min(bbox[2], bounds[2]) - Math.max(bbox[0], bounds[0]);
-	const h = Math.min(bbox[3], bounds[3]) - Math.max(bbox[1], bounds[1]);
-	const area = (bounds[2] - bounds[0]) * (bounds[3] - bounds[1]);
-	return w > 0 && h > 0 && area > 0 ? (w * h) / area : 0;
-}
-
-/** True when a page has almost no ink: a blank leaf of a scanned book, show-through and all. */
-function isBlankPage(page: mupdf.Page): boolean {
-	const pix = page.toPixmap(mupdf.Matrix.scale(0.25, 0.25), mupdf.ColorSpace.DeviceGray, false, true);
-	try {
-		const px = pix.getPixels();
-		let sum = 0;
-		for (const v of px) sum += v;
-		const paper = sum / px.length;
-		let ink = 0;
-		for (const v of px) if (v < paper - 60) ink++;
-		return ink / px.length < 0.0005;
-	} finally {
-		pix.destroy();
-	}
-}
-
-/** Renders a whole page as one JPEG, compositing a scan's image layers. */
-function renderPage(page: mupdf.Page, images: ImageSink, quality: number): ImageBlock {
-	const scale = 150 / 72;
-	const pix = page.toPixmap(mupdf.Matrix.scale(scale, scale), mupdf.ColorSpace.DeviceRGB, false, true);
-	try {
-		const img = images.addJpeg(pix.asJPEG(quality).slice(), pix.getWidth(), pix.getHeight());
-		return { kind: "image", ...img };
-	} finally {
-		pix.destroy();
-	}
-}
-
-function extractPage(page: mupdf.Page, index: number, images: ImageSink, quality: number): PageModel {
-	const bounds = page.getBounds();
-	const [bx0, by0, bx1, by1] = bounds;
-	const model: PageModel = { index, width: bx1 - bx0, height: by1 - by0, blocks: [] };
-	// Page-covering images are not encoded as they come: on a scanned page they
-	// are the scan itself, and the text layer above them is what reflows.
-	let scanned = false;
-	// No "paragraph-break"/"segment": those wrap content in structure blocks that walk() skips.
-	// Paragraphs are rebuilt by the heuristics instead.
-	const st = page.toStructuredText("preserve-images,preserve-whitespace,dehyphenate");
-	let line: {
-		chars: string[];
-		sizes: Map<number, number>;
-		bold: number;
-		italic: number;
-		n: number;
-		bbox: number[];
-	} | null = null;
-	let lines: PageModel["blocks"][number] | null = null;
-	st.walk({
-		onImageBlock(bbox, _transform, image) {
-			if (coverage(bbox, bounds) >= 0.85) {
-				scanned = true;
-				return;
-			}
-			const img = images.add(image, 0, 0);
-			if (img) model.blocks.push({ kind: "image", ...img });
-		},
-		beginTextBlock() {
-			lines = { kind: "text", lines: [] };
-		},
-		beginLine(bbox) {
-			line = { chars: [], sizes: new Map(), bold: 0, italic: 0, n: 0, bbox };
-		},
-		onChar(c, _origin, font, size) {
-			if (!line) return;
-			line.chars.push(c);
-			if (c.trim()) {
-				const k = Math.round(size * 2) / 2;
-				line.sizes.set(k, (line.sizes.get(k) ?? 0) + 1);
-				line.n++;
-				if (font.isBold()) line.bold++;
-				if (font.isItalic()) line.italic++;
-			}
-		},
-		endLine() {
-			if (line && lines?.kind === "text") {
-				const text = line.chars.join("");
-				if (text.trim()) {
-					let size = 0;
-					let best = -1;
-					for (const [s, count] of line.sizes) if (count > best) [size, best] = [s, count];
-					const [x0, y0, x1, y1] = line.bbox;
-					lines.lines.push({
-						text,
-						x0: x0 - bx0,
-						y0: y0 - by0,
-						x1: x1 - bx0,
-						y1: y1 - by0,
-						size,
-						bold: line.bold > line.n / 2,
-						italic: line.italic > line.n / 2,
-					});
-				}
-			}
-			line = null;
-		},
-		endTextBlock() {
-			if (lines?.kind === "text" && lines.lines.length) model.blocks.push(lines);
-			lines = null;
-		},
-	});
-	st.destroy();
-
-	if (scanned) {
-		const text = model.blocks
-			.flatMap((b) => (b.kind === "text" ? b.lines.map((l) => l.text) : []))
-			.join(" ")
-			.trim();
-		if (index === 0) {
-			// A first page drawn over a full-page picture is a cover: keep it as a picture.
-			model.blocks = [renderPage(page, images, quality)];
-		} else if (!text) {
-			// An image-only page (a plate, a photo, a blank leaf): one composite picture, unless blank.
-			if (!isBlankPage(page)) model.blocks.push(renderPage(page, images, quality));
-		} else if (isJunkText(text)) {
-			// OCR noise from show-through on an otherwise blank leaf.
-			model.blocks = model.blocks.filter((b) => b.kind !== "text");
-		} else {
-			model.ocr = true;
-		}
-	}
-	return model;
 }
 
 export function pdfToEpub(
@@ -374,7 +168,7 @@ export function pdfToEpub(
 	progress: Progress,
 ): ConvertResult {
 	const t0 = performance.now();
-	const doc = open(input, "pdf");
+	const doc = openDocument(input, "pdf");
 	try {
 		const total = doc.countPages();
 		const title = meta(doc, "info:Title") || "Untitled";
@@ -403,11 +197,11 @@ export function pdfToEpub(
 			}
 			for (const o of outline) if (o.page < total) nav.push({ title: o.title, href: pageHref(o.page), level: o.level });
 		} else {
-			const images = imageSink(book, quality);
+			const images = bookImages(book, quality);
 			const pages: PageModel[] = [];
 			for (let i = 0; i < total; i++) {
 				const page = doc.loadPage(i);
-				pages.push(extractPage(page, i, images, quality));
+				pages.push(extractPage(page, i, { images }));
 				page.destroy();
 				progress(i + 1, total, "Reading text");
 			}

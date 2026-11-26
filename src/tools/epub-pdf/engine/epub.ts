@@ -1,6 +1,7 @@
 // EPUB 3 packager. Content is streamed into the zip as it is added; the
 // package document (OPF) and navigation are written last, which is valid
 // because only `mimetype` has to come first.
+import { cleanText } from "../../../lib/pdf/text.ts";
 import { type ChunkSink, ZipWriter } from "./zip.ts";
 
 export interface EpubMeta {
@@ -30,15 +31,6 @@ const enc = new TextEncoder();
 export function escapeXml(s: string): string {
 	return s.replace(/[&<>"']/g, (c) =>
 		c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&apos;",
-	);
-}
-
-/** Strip characters that are illegal in XML 1.0 (control chars, lone surrogates). */
-export function cleanText(s: string): string {
-	return s.replace(
-		// biome-ignore lint/suspicious/noControlCharactersInRegex: matching control characters is the point
-		/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g,
-		"",
 	);
 }
 

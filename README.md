@@ -21,7 +21,7 @@ Small, fast tools that run entirely in the browser. No uploads, no accounts, no 
 
 ## How "no size limit" works
 
-- **Input** is never loaded whole. MuPDF reads byte ranges on demand: the worker serves them from the `File` with `FileReaderSync`, through a small LRU cache of 1 MB blocks (`engine/fileStream.ts`).
+- **Input** is never loaded whole. MuPDF reads byte ranges on demand: the worker serves them from the `File` with `FileReaderSync`, through a small LRU cache of 1 MB blocks (`src/lib/pdf/fileStream.ts`).
 - **EPUB output** is streamed. Chunks flow from the worker straight to disk through the File System Access API (Chromium). Other browsers collect a Blob and download it.
 - **PDF output** is built in WASM memory, which tops out at 2 GB. That is far beyond any real EPUB→PDF result.
 - Vercel only serves static files, so its 4.5 MB function body limit never applies.
@@ -40,6 +40,8 @@ Small, fast tools that run entirely in the browser. No uploads, no accounts, no 
 
 The tool becomes its own lazy chunk and shares the UI kit in `src/lib/ui.tsx`.
 
+Tools that read PDFs share the engine in `src/lib/pdf/`: opening and inspecting documents (`document.ts`), reading each page into positioned lines (`extract.ts`), and layout heuristics such as stripping running heads, rejoining OCR fragments and rebuilding paragraphs (`heuristics.ts`). Output formats stay with their tool; EPUB chapters and XHTML live in `src/tools/epub-pdf/engine/`.
+
 ## Commands
 
 ```sh
@@ -51,6 +53,7 @@ npm run check               # Biome lint + format check
 npx vite build              # production build → dist/
 npx playwright test         # headless end-to-end tests (uses installed Edge)
 node scripts/spike.ts [file] # convert a real file from the command line → out/
+node scripts/pdf-pages.ts <file.pdf> [22|20-24] [--json] # print the positioned lines the engine reads
 ```
 
 ## Deploy
