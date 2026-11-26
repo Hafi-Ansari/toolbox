@@ -8,7 +8,7 @@ import { meta, openDocument, type Progress } from "../../lib/pdf/document.ts";
 import { blockCachedHandle } from "../../lib/pdf/fileStream.ts";
 import type { OutlineEntry, PageModel } from "../../lib/pdf/heuristics.ts";
 import { guessMode } from "./engine/guess.ts";
-import { convert, type Mode, type TxtResult } from "./engine/index.ts";
+import { convert, type Mode, type Override, type TxtResult } from "./engine/index.ts";
 import { readPdf } from "./engine/read.ts";
 
 declare class FileReaderSync {
@@ -74,9 +74,9 @@ const api = {
 		};
 	},
 
-	convert(mode: Mode): TxtResult {
+	convert(mode: Mode, overrides?: Override[]): TxtResult {
 		if (!book) throw new Error("No book is open.");
-		return convert(book.pages, book.outline, { mode });
+		return convert(book.pages, book.outline, { mode, overrides });
 	},
 
 	/** Renders one page as PNG, `cssWidth` pixels wide at the given device pixel ratio. */

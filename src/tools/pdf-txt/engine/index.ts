@@ -6,12 +6,15 @@
 //   const txt = toTxt(result);
 import type { OutlineEntry, PageModel } from "../../../lib/pdf/heuristics.ts";
 import { bookStats, type PageRows, percentile, preparePages, type Row } from "./layout.ts";
+import { applyOverrides, joinsOf } from "./overrides.ts";
 import { poetryLines } from "./poetry.ts";
 import { fragmentedBook, proseLines, type Slice } from "./prose.ts";
-import type { Box, ConvertOptions, ExportOptions, Flag, TxtLine, TxtResult, Work } from "./types.ts";
+import type { Box, ConvertOptions, ExportOptions, Flag, SourceSpan, TxtLine, TxtResult, Work } from "./types.ts";
 import { chooseStarts, type Start } from "./works.ts";
 
+export { lineIn, PASSAGE_KIND } from "./overrides.ts";
 export { sentences } from "./prose.ts";
+export { type Selected, selectionSpan } from "./select.ts";
 export type * from "./types.ts";
 
 /** Flags for pages that will contribute nothing: scans without text, and blank pages. */
@@ -112,13 +115,22 @@ export function convert(models: PageModel[], outline: OutlineEntry[], opts: Conv
 	const bottom = percentile(full, 0.95);
 	const merge = fragmentedBook(models);
 	const ocrPages = new Set(pages.filter((p) => p.ocr).map((p) => p.index));
+	const joins = joinsOf(opts.overrides);
 	const works: Work[] = starts.map((s, i) => {
 		const next = starts[i + 1];
 		const { rows, endPage } = workRows(pages, s, next);
+		const poetry = { stats, bottom, flags, work: i, ocrPages, joins };
 		const lines =
-			opts.mode === "poetry"
-				? poetryLines(rows, { stats, bottom, flags, work: i, ocrPages })
-				: proseLines(workSlices(pages, s, next), stats.size, { lang: opts.lang, merge });
+			applyOverrides(opts.mode, opts.overrides, {
+				rows,
+				slices: () => workSlices(pages, s, next),
+				poetry,
+				body: stats.size,
+				prose: { lang: opts.lang, merge },
+			}) ??
+			(opts.mode === "poetry"
+				? poetryLines(rows, poetry)
+				: proseLines(workSlices(pages, s, next), stats.size, { lang: opts.lang, merge }));
 		return {
 			kind: s.kind,
 			title: s.title.replace(/\s+/g, " ").trim(),
@@ -159,6 +171,8 @@ export interface OutLine {
 	work: number;
 	/** Where the printed line (or title) sits on the page, when known. */
 	box?: Box;
+	/** The printed lines a body line comes from (not set for titles and blank lines): what overrides are keyed to. */
+	span?: SourceSpan;
 }
 
 /** The lines toTxt() writes, each with its source. `toTxt` is these texts joined by LF. */
@@ -175,7 +189,7 @@ export function txtLines(result: TxtResult, opts: ExportOptions = {}): OutLine[]
 		if (w.title && w.lines.length) lines.push({ text: "", page, work });
 		for (const l of w.lines) {
 			if (l.text.trim()) page = l.page;
-			lines.push({ text: pad(l) + l.text.trimEnd(), page, work, box: l.box });
+			lines.push({ text: pad(l) + l.text.trimEnd(), page, work, box: l.box, span: l.span });
 		}
 		while (lines.length && !lines[lines.length - 1].text) lines.pop();
 		if (!lines.some((l) => l.text.trim())) return;

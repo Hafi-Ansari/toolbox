@@ -20,6 +20,8 @@ export interface TxtLine {
 	box?: Box;
 	/** Poetry: how far the line is indented from the work's left edge on its page, in ems (0 when flush). */
 	indent?: number;
+	/** The printed lines this line comes from, in reading order: what a manual override is keyed to. */
+	span?: SourceSpan;
 }
 
 export type WorkKind =
@@ -91,6 +93,8 @@ export interface ConvertOptions {
 	mode: Mode;
 	/** Language for sentence splitting in prose mode (BCP 47). Default "en". */
 	lang?: string;
+	/** Corrections a person made, keyed to the source. Each applies only where it fits (see Override). */
+	overrides?: Override[];
 }
 
 export interface ExportOptions {
@@ -101,3 +105,32 @@ export interface ExportOptions {
 	/** Keep poetry indentation as leading spaces, two per em (a monospace approximation). Default true. */
 	indent?: boolean;
 }
+
+/** A point in the book's reading order: a page and a height on it, in PDF points from the top. */
+export interface SourcePos {
+	page: number;
+	y: number;
+}
+
+/**
+ * A stretch of the source in reading order, from the top of its first printed
+ * line to the bottom of its last. A printed line belongs to the span when its
+ * middle lies inside it.
+ */
+export interface SourceSpan {
+	from: SourcePos;
+	to: SourcePos;
+}
+
+/**
+ * A manual correction, tied to where the text is printed (never to TXT line
+ * numbers), so it survives re-conversion, mode switches and export options.
+ * `text` is a short label for listing the override; the engine ignores it.
+ */
+export type Override =
+	/** Prose mode: keep these printed lines as printed (verse quoted in prose): one TXT line each, stanzas from gaps. */
+	| { kind: "lines"; span: SourceSpan; text?: string }
+	/** Poetry mode: reflow these printed lines into paragraphs, one sentence per line (a prose poem, a note). */
+	| { kind: "reflow"; span: SourceSpan; text?: string }
+	/** Poetry (and kept lines in prose): join the printed line at `at` to the line above, one verse line wrapped by the layout. */
+	| { kind: "join"; at: SourcePos; text?: string };
