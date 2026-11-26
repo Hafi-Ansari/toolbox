@@ -40,10 +40,7 @@ each other's way:
 
 - **Checks before reporting or merging:**
   `npm run typecheck`, `npm run check`, `npm test`, `npx vite build`,
-  `E2E_PORT=<port> npx playwright test`.
-  Known failure on main as of 2026-11-26: `e2e/reader.spec.ts:64` ("contents, font size keeps
-  the passage, scroll mode"). It isn't yours; don't report it as a regression, and don't fix it
-  unless that's your task.
+  `E2E_PORT=<port> npx playwright test`. All of them pass on main; a failure is yours to explain.
 
 - **Stay in your files.** A new tool lives in `src/tools/<id>/` and adds one entry to
   `src/tools/registry.ts` (see README "Adding a tool"). Say so before editing shared files:
