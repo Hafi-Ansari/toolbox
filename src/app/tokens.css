@@ -1,0 +1,54 @@
+/* Design tokens. Dark-only palette inspired by MongoDB's brand colors. */
+:root {
+	color-scheme: dark;
+
+	/* Surfaces */
+	--bg: #001e2b;
+	--surface: #0a2733;
+	--surface-2: #112733;
+	--border: #1c2d38;
+	--border-strong: #3d4f58;
+
+	/* Text */
+	--text: #e8edeb;
+	--text-muted: #889397;
+
+	/* Accent: spring green family */
+	--accent: #00ed64;
+	--accent-soft: #71f6ba;
+	--accent-deep: #00684a;
+	--accent-ink: #023430;
+
+	/* Status */
+	--info: #0498ec;
+	--danger: #ff6f44;
+
+	/* Type */
+	--font-sans: "Geist Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+	--font-mono: "Geist Mono Variable", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+	--fs-xs: 12px;
+	--fs-sm: 13px;
+	--fs-md: 15px;
+	--fs-lg: 20px;
+	--fs-xl: 32px;
+
+	/* Space (4px grid) */
+	--s-1: 4px;
+	--s-2: 8px;
+	--s-3: 12px;
+	--s-4: 16px;
+	--s-5: 24px;
+	--s-6: 32px;
+	--s-7: 48px;
+	--s-8: 64px;
+
+	/* Shape and motion */
+	--radius-sm: 8px;
+	--radius: 12px;
+	--radius-pill: 999px;
+	--ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+	--dur: 150ms;
+	--glow: 0 0 0 1px var(--accent), 0 0 24px -4px color-mix(in srgb, var(--accent) 55%, transparent);
+
+	--content: 960px;
+}
