@@ -1,5 +1,5 @@
 import { type ComponentType, lazy, Suspense, useEffect } from "react";
-import { Link, Route, Switch, useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Icon } from "../lib/Icon.tsx";
 import { type ToolMeta, tools } from "../tools/registry.ts";
 import s from "./App.module.css";
@@ -95,11 +95,13 @@ function NotFound() {
 
 export function App() {
 	const [location] = useLocation();
+	// A tool owns its path and everything below it (e.g. /read/:bookId), staying mounted across sub-routes.
+	const tool = tools.find((t) => location === t.path || location.startsWith(`${t.path}/`));
 	// Braces matter: newer browsers return a Promise from scrollTo, and an effect must not return one.
-	// biome-ignore lint/correctness/useExhaustiveDependencies: scroll to top on every navigation
+	// biome-ignore lint/correctness/useExhaustiveDependencies: scroll to top when switching pages
 	useEffect(() => {
 		window.scrollTo(0, 0);
-	}, [location]);
+	}, [tool?.id ?? location]);
 
 	return (
 		<div className={s.shell}>
@@ -115,19 +117,7 @@ export function App() {
 			</header>
 
 			<main className={s.main}>
-				<Switch>
-					<Route path="/">
-						<Home />
-					</Route>
-					{tools.map((t) => (
-						<Route key={t.id} path={t.path}>
-							<ToolPage tool={t} />
-						</Route>
-					))}
-					<Route>
-						<NotFound />
-					</Route>
-				</Switch>
+				{location === "/" ? <Home /> : tool ? <ToolPage key={tool.id} tool={tool} /> : <NotFound />}
 			</main>
 
 			<footer className={s.footer}>

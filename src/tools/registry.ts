@@ -24,4 +24,13 @@ export const tools: ToolMeta[] = [
 		tags: ["EPUB", "PDF"],
 		load: () => import("./epub-pdf/index.tsx"),
 	},
+	{
+		id: "epub-reader",
+		path: "/read",
+		title: "EPUB Reader",
+		blurb: "Read ebooks in a calm dark theme. Opens instantly, remembers your place.",
+		icon: "book",
+		tags: ["EPUB", "Reader"],
+		load: () => import("./epub-reader/index.tsx"),
+	},
 ];

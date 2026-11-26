@@ -11,6 +11,7 @@ const PATHS = {
 	x: "M18 6 6 18M6 6l12 12",
 	code: "m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14",
 	lock: "M6 11V8a6 6 0 0 1 12 0v3M5 11h14v10H5z",
+	menu: "M4 6h16M4 12h16M4 18h10",
 } as const;
 
 export type IconName = keyof typeof PATHS;

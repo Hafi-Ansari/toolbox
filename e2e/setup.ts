@@ -1,9 +1,31 @@
-// Builds test fixtures (a sample EPUB and the PDF made from it) with the Node engine.
+// Builds test fixtures with the Node engine:
+//   out/sample.epub, out/sample.pdf, out/sample.fixed.epub  (via scripts/spike.ts)
+//   out/hostile.epub  (scripts, handlers, remote resources — must all be inert in the reader)
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import { EpubBuilder } from "../src/tools/epub-pdf/engine/epub.ts";
+
+function hostileEpub(file: string) {
+	const parts: Uint8Array[] = [];
+	const book = new EpubBuilder({ title: "Hostile Book" }, (c) => parts.push(c.slice()));
+	book.addPage(
+		"c1.xhtml",
+		"Trap",
+		`<h1>Trap chapter</h1>
+<script>parent.__pwned = "script";</script>
+<p>Plain text that should render.</p>
+<img src="missing.png" onerror="parent.__pwned = 'onerror'" alt=""/>
+<img src="https://tracker.invalid/pixel.png" alt=""/>
+<p style="background: url(https://tracker.invalid/bg.png)">Styled paragraph.</p>
+<p><a href="https://example.com/">External link</a> and <a href="javascript:parent.__pwned='link'">bad link</a></p>`,
+	);
+	book.finish([{ title: "Trap", href: "c1.xhtml", level: 1 }]);
+	fs.writeFileSync(file, Buffer.concat(parts));
+}
 
 export default function setup() {
-	if (!fs.existsSync("out/sample.epub") || !fs.existsSync("out/sample.pdf")) {
+	if (!["out/sample.epub", "out/sample.pdf", "out/sample.fixed.epub"].every((f) => fs.existsSync(f))) {
 		execFileSync(process.execPath, ["scripts/spike.ts"], { stdio: "ignore" });
 	}
+	hostileEpub("out/hostile.epub");
 }

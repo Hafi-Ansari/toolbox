@@ -2,7 +2,10 @@
 
 Small, fast tools that run entirely in the browser. No uploads, no accounts, no size limits.
 
-**First tool: EPUB ⇄ PDF.** It converts ebooks to PDF and PDFs to ebooks (reflowable text or fixed pages), powered by [MuPDF](https://mupdf.com) compiled to WebAssembly.
+| Tool | Path | What it does |
+|---|---|---|
+| **EPUB ⇄ PDF** | `/epub-pdf` | Converts ebooks to PDF and PDFs to ebooks (reflowable text or fixed pages), powered by [MuPDF](https://mupdf.com) compiled to WebAssembly. |
+| **EPUB Reader** | `/read` | A light, dark-mode ebook reader: pages or scrolling, contents, typography settings, and a library of recent books kept on the device. |
 
 ## Stack
 
@@ -12,7 +15,7 @@ Small, fast tools that run entirely in the browser. No uploads, no accounts, no 
 | Routing | wouter (~2 KB) | The tool registry does the real work |
 | Conversion | `mupdf` (WASM) in a Web Worker | One engine for both directions; UI never blocks |
 | Worker calls | Comlink | Function calls instead of postMessage plumbing |
-| Zip | own writer in `zip.ts` + `fflate` deflate | Correct EPUB `mimetype` entry, ZIP64, streaming |
+| Zip | own writer (`zip.ts`) and reader (`src/lib/zipReader.ts`) | Correct EPUB `mimetype` entry, ZIP64, random access; native `DecompressionStream` for reading |
 | Styling | CSS Modules + `tokens.css` | Zero runtime |
 | Tests | Vitest (unit), Playwright (headless e2e) | |
 
@@ -22,6 +25,13 @@ Small, fast tools that run entirely in the browser. No uploads, no accounts, no 
 - **EPUB output** is streamed. Chunks flow from the worker straight to disk through the File System Access API (Chromium). Other browsers collect a Blob and download it.
 - **PDF output** is built in WASM memory, which tops out at 2 GB. That is far beyond any real EPUB→PDF result.
 - Vercel only serves static files, so its 4.5 MB function body limit never applies.
+
+## How the reader stays light and safe
+
+- **Native rendering.** Chapters are the book's own XHTML/CSS, rendered by the browser in an iframe, with no WASM involved. Opening a book reads only the zip's central directory; each chapter is inflated on demand.
+- **Untrusted content is inert.** Book scripts, frames, forms, event handlers and `javascript:` URLs are stripped, and the iframe is sandboxed without `allow-scripts`. A CSP blocks every network request, so images and fonts come only from the book itself as `blob:` URLs.
+- **Pagination** uses CSS columns, one per page. Positions are saved as a text anchor, not a page number, so font, width and window changes keep your place.
+- **Library** books live in the Origin Private File System: private to the site, never uploaded, streamed in so large files never sit in memory.
 
 ## Adding a tool
 
@@ -35,7 +45,7 @@ The tool becomes its own lazy chunk and shares the UI kit in `src/lib/ui.tsx`.
 ```sh
 npm install
 npx vite                    # dev server (run directly, not via npm, so stopping it frees the port)
-npm test                    # unit tests
+npm test                    # unit tests (via scripts/test.ts, which fixes Windows drive-letter casing)
 npm run typecheck
 npm run check               # Biome lint + format check
 npx vite build              # production build → dist/
