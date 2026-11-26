@@ -67,7 +67,15 @@ export type FlagKind =
 	/** Text that OCR probably misread (a pattern typical of OCR noise). */
 	| "ocr-noise"
 	/** A typical OCR misreading was corrected (a lone "|" read back as "I"). */
-	| "ocr-fixed";
+	| "ocr-fixed"
+	/** On-demand OCR found a line the PDF's text lacks, and added it. */
+	| "ocr-added"
+	/** On-demand OCR replaced a garbled line of the PDF's text (the two readings barely resemble each other). */
+	| "ocr-replaced"
+	/** On-demand OCR reads a line differently; the PDF's text was kept. */
+	| "ocr-differs"
+	/** A scan without a text layer was read by on-demand OCR. */
+	| "ocr-page";
 
 export interface Flag {
 	kind: FlagKind;

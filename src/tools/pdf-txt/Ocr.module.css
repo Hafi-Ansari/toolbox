@@ -1,0 +1,80 @@
+/* On-demand OCR panel (OcrPanel.tsx). Kept apart from PdfTxt.module.css. */
+
+.panel {
+	display: grid;
+	gap: var(--s-4);
+	padding: var(--s-4);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+}
+
+.head {
+	display: flex;
+	gap: var(--s-3);
+	align-items: flex-start;
+}
+
+.head > svg {
+	flex: none;
+	margin-top: 3px;
+	color: var(--accent);
+}
+
+.copy {
+	display: grid;
+	gap: var(--s-1);
+	min-width: 0;
+	max-width: 640px;
+}
+
+.title {
+	font-size: var(--fs-md);
+	font-weight: 600;
+}
+
+.detail {
+	font-size: var(--fs-sm);
+	color: var(--text-muted);
+}
+
+.actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--s-3);
+}
+
+.meta {
+	font-size: var(--fs-sm);
+	color: var(--text-muted);
+}
+
+.running {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: center;
+	gap: var(--s-4);
+}
+
+.summary {
+	display: flex;
+	align-items: center;
+	gap: var(--s-2);
+	font-size: var(--fs-sm);
+	color: var(--text-muted);
+}
+
+.summary svg {
+	flex: none;
+	color: var(--accent);
+}
+
+@media (max-width: 560px) {
+	.actions > button {
+		flex: 1 1 100%;
+	}
+
+	.running {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
