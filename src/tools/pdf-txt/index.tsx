@@ -183,7 +183,7 @@ export default function PdfTxtTool() {
 				</p>
 			</header>
 
-			<Card className={s.panel}>
+			<Card className={state.kind === "ready" ? `${s.panel} ${s.wide}` : s.panel}>
 				{state.kind === "idle" ? (
 					<FileDrop
 						accept=".pdf,application/pdf"
@@ -265,6 +265,9 @@ export default function PdfTxtTool() {
 
 /* ---------- Review: text beside the printed page */
 
+/** Matches the side-panel layout in PdfTxt.module.css. */
+const WIDE = "(min-width: 1200px)";
+
 function Review({
 	state,
 	worker,
@@ -294,6 +297,8 @@ function Review({
 	const [selected, setSelected] = useState<Selected | null>(null);
 	/** An override to show once the text is rebuilt after adding or undoing it. */
 	const pending = useRef<Override | null>(null);
+	/** Wide screens show the review list in a side panel of its own, so a long list starts open there. */
+	const [wide] = useState(() => window.matchMedia(WIDE).matches);
 
 	// A new conversion (mode or options changed) replaces the text.
 	useEffect(() => {
@@ -460,238 +465,257 @@ function Review({
 
 	return (
 		<div className={s.workspace}>
-			<div className={s.fileRow}>
-				<Chip badge="PDF" name={file.name} meta={summary} to="TXT" />
-				<Button variant="ghost" icon="x" onClick={() => discardEdits() && onReset()}>
-					Change file
-				</Button>
-			</div>
+			{/* The wrappers below group the tool into a toolbar, a status strip and the main area (text, page, side
+			    panel) on wide screens. On narrow ones they don't render a box, and the tool is one column. */}
+			<div className={s.toolbar}>
+				<div className={s.fileRow}>
+					<Chip badge="PDF" name={file.name} meta={summary} to="TXT" />
+					<Button variant="ghost" icon="x" onClick={() => discardEdits() && onReset()}>
+						Change file
+					</Button>
+				</div>
 
-			<div className={s.options}>
-				<Pills
-					label="Book type"
-					value={mode}
-					options={[
-						{ value: "poetry", label: "Poetry" },
-						{ value: "prose", label: "Prose" },
-					]}
-					onChange={(m) => discardEdits() && void onMode(m)}
-				/>
-				{mode === "poetry" && (
+				<div className={s.options}>
 					<Pills
-						label="Indents"
-						value={options.indent ? "keep" : "drop"}
+						label="Book type"
+						value={mode}
 						options={[
-							{ value: "keep", label: "Keep" },
-							{ value: "drop", label: "Remove" },
+							{ value: "poetry", label: "Poetry" },
+							{ value: "prose", label: "Prose" },
 						]}
-						onChange={(v) => update({ indent: v === "keep" })}
+						onChange={(m) => discardEdits() && void onMode(m)}
 					/>
-				)}
-				<Pills
-					label="Front & back matter"
-					value={options.matter ? "include" : "omit"}
-					options={[
-						{ value: "omit", label: "Leave out" },
-						{ value: "include", label: "Include" },
-					]}
-					onChange={(v) => update({ matter: v === "include" })}
+					{mode === "poetry" && (
+						<Pills
+							label="Indents"
+							value={options.indent ? "keep" : "drop"}
+							options={[
+								{ value: "keep", label: "Keep" },
+								{ value: "drop", label: "Remove" },
+							]}
+							onChange={(v) => update({ indent: v === "keep" })}
+						/>
+					)}
+					<Pills
+						label="Front & back matter"
+						value={options.matter ? "include" : "omit"}
+						options={[
+							{ value: "omit", label: "Leave out" },
+							{ value: "include", label: "Include" },
+						]}
+						onChange={(v) => update({ matter: v === "include" })}
+					/>
+					<p className={s.modeHint}>
+						{mode === "poetry"
+							? "One printed line per line, stanzas separated by a blank line."
+							: "One sentence per line, paragraphs separated by a blank line."}{" "}
+						Works are separated by three empty lines.
+					</p>
+				</div>
+			</div>
+
+			<div className={s.status}>
+				{counts.needsOcr === book.pages ? (
+					<Note tone="info">
+						Every page of this PDF is a scan without a text layer, so its words exist only as images. Run OCR below to
+						read them.
+					</Note>
+				) : counts.needsOcr > 0 ? (
+					<Note tone="info">
+						{counts.needsOcr === 1 ? "1 page is a scan" : `${counts.needsOcr} pages are scans`} without a text layer.
+						Their words are missing from the text until you run OCR; they're listed under <strong>Review</strong>.
+					</Note>
+				) : book.ocr > book.pages / 2 ? (
+					<Note tone="info">
+						This is a scanned book with a text layer from OCR. Scanner misreadings carry over, so check lines against
+						the page, especially italics and spaced-out letters.
+					</Note>
+				) : null}
+
+				<OcrPanel
+					worker={worker}
+					page={page}
+					pages={book.pages}
+					result={result}
+					edited={edited}
+					confirmDiscard={discardEdits}
+					onConverted={() => onMode(mode)}
 				/>
-				<p className={s.modeHint}>
-					{mode === "poetry"
-						? "One printed line per line, stanzas separated by a blank line."
-						: "One sentence per line, paragraphs separated by a blank line."}{" "}
-					Works are separated by three empty lines.
-				</p>
 			</div>
 
-			{counts.needsOcr === book.pages ? (
-				<Note tone="info">
-					Every page of this PDF is a scan without a text layer, so its words exist only as images. Run OCR below to
-					read them.
-				</Note>
-			) : counts.needsOcr > 0 ? (
-				<Note tone="info">
-					{counts.needsOcr === 1 ? "1 page is a scan" : `${counts.needsOcr} pages are scans`} without a text layer.
-					Their words are missing from the text until you run OCR; they're listed under <strong>Review</strong>.
-				</Note>
-			) : book.ocr > book.pages / 2 ? (
-				<Note tone="info">
-					This is a scanned book with a text layer from OCR. Scanner misreadings carry over, so check lines against the
-					page, especially italics and spaced-out letters.
-				</Note>
-			) : null}
-
-			<OcrPanel
-				worker={worker}
-				page={page}
-				pages={book.pages}
-				result={result}
-				edited={edited}
-				confirmDiscard={discardEdits}
-				onConverted={() => onMode(mode)}
-			/>
-
-			<div ref={panes} className={s.review}>
-				<section className={s.textPane} aria-label="Text">
-					<div className={s.paneBar}>
-						<span className={s.paneTitle}>Text{edited && <span className={s.edited}> · edited</span>}</span>
-						<span className={s.paneMeta}>{size.lines ? `${size.lines} lines` : ""}</span>
-						<button
-							type="button"
-							className={s.barButton}
-							disabled={!selected}
-							onClick={togglePassage}
-							title={
-								covering
-									? "Undo this change: convert the passage like the rest of the book"
+			<div className={s.main}>
+				<div ref={panes} className={s.review}>
+					<section className={s.textPane} aria-label="Text">
+						<div className={s.paneBar}>
+							<span className={s.paneTitle}>Text{edited && <span className={s.edited}> · edited</span>}</span>
+							<span className={s.paneMeta}>{size.lines ? `${size.lines} lines` : ""}</span>
+							<button
+								type="button"
+								className={s.barButton}
+								disabled={!selected}
+								onClick={togglePassage}
+								title={
+									covering
+										? "Undo this change: convert the passage like the rest of the book"
+										: mode === "prose"
+											? "Keep the selected passage (or the paragraph at the caret) line by line, as printed: for verse quoted in prose"
+											: "Reflow the selected passage (or the stanza at the caret) into sentences: for a prose poem or a note"
+								}
+							>
+								{covering
+									? mode === "prose"
+										? "Undo kept lines"
+										: "Undo reflow"
 									: mode === "prose"
-										? "Keep the selected passage (or the paragraph at the caret) line by line, as printed: for verse quoted in prose"
-										: "Reflow the selected passage (or the stanza at the caret) into sentences: for a prose poem or a note"
+										? "Keep printed lines"
+										: "Reflow as prose"}
+							</button>
+							{edited && (
+								<Button
+									variant="ghost"
+									onClick={() => {
+										if (!discardEdits()) return;
+										setText(generated);
+										setEdited(false);
+									}}
+								>
+									Revert
+								</Button>
+							)}
+						</div>
+						<textarea
+							ref={area}
+							className={s.text}
+							value={text}
+							spellCheck={false}
+							aria-label="Extracted text"
+							onChange={(e) => {
+								setText(e.target.value);
+								setEdited(true);
+							}}
+							onSelect={followCaret}
+							onKeyUp={followCaret}
+							onMouseUp={followCaret}
+						/>
+					</section>
+
+					<section className={s.pagePane} aria-label="Printed page">
+						<div className={s.paneBar}>
+							<button
+								type="button"
+								className={s.iconButton}
+								onClick={() => setPage((p) => Math.max(0, p - 1))}
+								disabled={page <= 0}
+								aria-label="Previous page"
+							>
+								<Icon name="back" size={16} />
+							</button>
+							<span className={s.paneTitle}>
+								Page {page + 1} <span className={s.paneMeta}>of {book.pages}</span>
+							</span>
+							<button
+								type="button"
+								className={s.iconButton}
+								onClick={() => setPage((p) => Math.min(book.pages - 1, p + 1))}
+								disabled={page >= book.pages - 1}
+								aria-label="Next page"
+							>
+								<Icon name="arrow" size={16} />
+							</button>
+							{works.length > 1 && (
+								<select
+									className={s.jump}
+									aria-label="Go to work"
+									value={String(
+										result.works.findIndex((w) => page >= w.page && page <= w.endPage && w.kind !== "matter"),
+									)}
+									onChange={(e) => showWork(Number(e.target.value))}
+								>
+									<option value="-1" disabled>
+										Go to…
+									</option>
+									{result.works.map((w, i) =>
+										w.kind === "matter" && !options.matter ? null : (
+											// biome-ignore lint/suspicious/noArrayIndexKey: the index is the work's identity (it is also the value)
+											<option key={`${i}:${w.page}`} value={String(i)}>
+												{w.kind === "section" ? "§ " : ""}
+												{w.title || "Untitled"} · p. {w.page + 1}
+											</option>
+										),
+									)}
+								</select>
+							)}
+						</div>
+						<PageView worker={worker} index={page} mark={mark?.page === page ? mark : null} />
+					</section>
+				</div>
+
+				<div className={s.side}>
+					<div className={s.sideList}>
+						<OverrideList
+							overrides={overrides}
+							mode={mode}
+							onShow={showOverride}
+							onUndo={(o) =>
+								changeOverrides(
+									overrides.filter((x) => x !== o),
+									o,
+								)
 							}
-						>
-							{covering
-								? mode === "prose"
-									? "Undo kept lines"
-									: "Undo reflow"
-								: mode === "prose"
-									? "Keep printed lines"
-									: "Reflow as prose"}
-						</button>
-						{edited && (
-							<Button
-								variant="ghost"
-								onClick={() => {
-									if (!discardEdits()) return;
-									setText(generated);
-									setEdited(false);
-								}}
-							>
-								Revert
+						/>
+
+						<details className={s.flags} open={reviewCount > 0 && (wide || reviewCount <= 40)}>
+							<summary>
+								Review{" "}
+								<span className={s.paneMeta}>
+									· {reviewCount} to check · {flags.length - reviewCount} notes
+								</span>
+							</summary>
+							{flags.length ? (
+								<ul>
+									{flags.map((f, i) => (
+										<li
+											// biome-ignore lint/suspicious/noArrayIndexKey: flags are a fixed list per conversion; two can share kind and page
+											key={`${f.kind}:${f.page}:${i}`}
+											className={f.kind === "possible-wrap" ? s.override : undefined}
+										>
+											<button type="button" onClick={() => showFlag(f)} className={s.flag}>
+												<span className={REVIEW_FIRST.includes(f.kind) ? s.flagKind : s.flagNote}>
+													{FLAG_LABELS[f.kind]}
+												</span>
+												<span className={s.flagPage}>p. {f.page + 1}</span>
+												<span className={s.flagReason}>{f.reason}</span>
+											</button>
+											{f.kind === "possible-wrap" && f.box && (
+												<button
+													type="button"
+													className={s.barButton}
+													onClick={() => joinFlag(f)}
+													title="Join this line to the line above: one long verse line wrapped by the layout"
+												>
+													Join
+												</button>
+											)}
+										</li>
+									))}
+								</ul>
+							) : (
+								<p className={s.paneMeta}>Nothing flagged.</p>
+							)}
+						</details>
+					</div>
+
+					<div className={s.sideFoot}>
+						{saved && <Note tone="success">{saved}</Note>}
+
+						<div className={s.actions}>
+							<Button icon="download" disabled={!text.trim()} onClick={download}>
+								Download TXT
 							</Button>
-						)}
+							<span className={s.shortcut}>{formatBytes(size.bytes)} · UTF-8 · LF line endings</span>
+						</div>
 					</div>
-					<textarea
-						ref={area}
-						className={s.text}
-						value={text}
-						spellCheck={false}
-						aria-label="Extracted text"
-						onChange={(e) => {
-							setText(e.target.value);
-							setEdited(true);
-						}}
-						onSelect={followCaret}
-						onKeyUp={followCaret}
-						onMouseUp={followCaret}
-					/>
-				</section>
-
-				<section className={s.pagePane} aria-label="Printed page">
-					<div className={s.paneBar}>
-						<button
-							type="button"
-							className={s.iconButton}
-							onClick={() => setPage((p) => Math.max(0, p - 1))}
-							disabled={page <= 0}
-							aria-label="Previous page"
-						>
-							<Icon name="back" size={16} />
-						</button>
-						<span className={s.paneTitle}>
-							Page {page + 1} <span className={s.paneMeta}>of {book.pages}</span>
-						</span>
-						<button
-							type="button"
-							className={s.iconButton}
-							onClick={() => setPage((p) => Math.min(book.pages - 1, p + 1))}
-							disabled={page >= book.pages - 1}
-							aria-label="Next page"
-						>
-							<Icon name="arrow" size={16} />
-						</button>
-						{works.length > 1 && (
-							<select
-								className={s.jump}
-								aria-label="Go to work"
-								value={String(
-									result.works.findIndex((w) => page >= w.page && page <= w.endPage && w.kind !== "matter"),
-								)}
-								onChange={(e) => showWork(Number(e.target.value))}
-							>
-								<option value="-1" disabled>
-									Go to…
-								</option>
-								{result.works.map((w, i) =>
-									w.kind === "matter" && !options.matter ? null : (
-										// biome-ignore lint/suspicious/noArrayIndexKey: the index is the work's identity (it is also the value)
-										<option key={`${i}:${w.page}`} value={String(i)}>
-											{w.kind === "section" ? "§ " : ""}
-											{w.title || "Untitled"} · p. {w.page + 1}
-										</option>
-									),
-								)}
-							</select>
-						)}
-					</div>
-					<PageView worker={worker} index={page} mark={mark?.page === page ? mark : null} />
-				</section>
-			</div>
-
-			<OverrideList
-				overrides={overrides}
-				mode={mode}
-				onShow={showOverride}
-				onUndo={(o) =>
-					changeOverrides(
-						overrides.filter((x) => x !== o),
-						o,
-					)
-				}
-			/>
-
-			<details className={s.flags} open={reviewCount > 0 && reviewCount <= 40}>
-				<summary>
-					Review{" "}
-					<span className={s.paneMeta}>
-						· {reviewCount} to check · {flags.length - reviewCount} notes
-					</span>
-				</summary>
-				{flags.length ? (
-					<ul>
-						{flags.map((f, i) => (
-							// biome-ignore lint/suspicious/noArrayIndexKey: flags are a fixed list per conversion; two can share kind and page
-							<li key={`${f.kind}:${f.page}:${i}`} className={f.kind === "possible-wrap" ? s.override : undefined}>
-								<button type="button" onClick={() => showFlag(f)} className={s.flag}>
-									<span className={REVIEW_FIRST.includes(f.kind) ? s.flagKind : s.flagNote}>{FLAG_LABELS[f.kind]}</span>
-									<span className={s.flagPage}>p. {f.page + 1}</span>
-									<span className={s.flagReason}>{f.reason}</span>
-								</button>
-								{f.kind === "possible-wrap" && f.box && (
-									<button
-										type="button"
-										className={s.barButton}
-										onClick={() => joinFlag(f)}
-										title="Join this line to the line above: one long verse line wrapped by the layout"
-									>
-										Join
-									</button>
-								)}
-							</li>
-						))}
-					</ul>
-				) : (
-					<p className={s.paneMeta}>Nothing flagged.</p>
-				)}
-			</details>
-
-			{saved && <Note tone="success">{saved}</Note>}
-
-			<div className={s.actions}>
-				<Button icon="download" disabled={!text.trim()} onClick={download}>
-					Download TXT
-				</Button>
-				<span className={s.shortcut}>{formatBytes(size.bytes)} · UTF-8 · LF line endings</span>
+				</div>
 			</div>
 		</div>
 	);
@@ -805,7 +829,13 @@ function PageView({
 			) : shown ? (
 				<div
 					className={s.sheet}
-					style={{ aspectRatio: `${shown.width} / ${shown.height}`, opacity: shown.index === index ? 1 : 0.4 }}
+					style={
+						{
+							aspectRatio: `${shown.width} / ${shown.height}`,
+							"--ratio": shown.width / shown.height,
+							opacity: shown.index === index ? 1 : 0.4,
+						} as React.CSSProperties
+					}
 				>
 					<img src={shown.url} alt={`Page ${shown.index + 1}`} draggable={false} />
 					{mark && shown.index === index && (

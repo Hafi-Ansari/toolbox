@@ -65,16 +65,24 @@
 	max-width: 620px;
 }
 
-/* ---------- Text beside page. Wider than the page column on large screens. */
+/* ---------- Text beside page */
 
 .review {
-	--review: min(1360px, calc(100vw - 64px));
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 	gap: var(--s-4);
-	width: max(100%, var(--review));
-	margin-inline: min(0px, calc((100% - var(--review)) / 2));
 	scroll-margin-top: var(--s-4);
+}
+
+/* Layout groups (toolbar, status strip, main area, side panel). They draw no box on narrow
+   screens, where the tool is one column; the wide layout at the end of this file uses them. */
+.toolbar,
+.status,
+.main,
+.side,
+.sideList,
+.sideFoot {
+	display: contents;
 }
 
 .textPane,
@@ -342,8 +350,6 @@
 @media (max-width: 860px) {
 	.review {
 		grid-template-columns: minmax(0, 1fr);
-		width: 100%;
-		margin-inline: 0;
 	}
 
 	.textPane,
@@ -433,5 +439,176 @@
 
 	.override > .barButton {
 		margin-top: var(--s-1);
+	}
+}
+
+/* ---------- Wide screens: one workspace, wider than the site column once a book is open.
+   A toolbar (file, options), a status strip (notes, OCR), then text and page side by side at
+   the height of the window, with the review lists and Download in a side panel (or, below
+   1200px, under the panes). */
+
+@media (min-width: 861px) {
+	/* Centred on the site column, like a full-bleed figure. */
+	.wide {
+		--wide: min(1920px, calc(100vw - 64px));
+		width: max(100%, var(--wide));
+		margin-inline: min(0px, calc((100% - var(--wide)) / 2));
+		padding: var(--s-4);
+	}
+
+	.wide > .workspace {
+		gap: var(--s-4);
+		padding: 0;
+	}
+
+	.toolbar {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: flex-end;
+		gap: var(--s-4) var(--s-6);
+		padding-bottom: var(--s-4);
+		border-bottom: 1px solid var(--border);
+	}
+
+	.toolbar > .fileRow {
+		flex: 1 1 560px;
+		min-width: min(560px, 100%);
+	}
+
+	.toolbar > .options {
+		flex: 0 1 auto;
+		flex-wrap: nowrap;
+		align-items: flex-end;
+		gap: var(--s-5);
+		padding-top: 0;
+		border-top: 0;
+	}
+
+	.toolbar .modeHint {
+		flex: 0 1 260px;
+		min-width: 160px;
+		font-size: var(--fs-xs);
+		line-height: 1.45;
+	}
+
+	.status {
+		display: grid;
+		gap: var(--s-3);
+	}
+
+	.status:empty {
+		display: none;
+	}
+
+	.main {
+		display: grid;
+		gap: var(--s-4);
+	}
+
+	.review {
+		height: clamp(560px, calc(100dvh - 2 * var(--s-4)), 1600px);
+	}
+
+	.textPane,
+	.pagePane {
+		height: auto;
+	}
+
+	/* The whole printed page in view: as wide as the pane allows, as tall as it is. */
+	.sheetHolder {
+		container-type: size;
+	}
+
+	.sheet {
+		width: min(100%, calc(100cqh * var(--ratio, 1)));
+		margin-inline: auto;
+	}
+
+	.side,
+	.sideList,
+	.sideFoot {
+		display: grid;
+		align-content: start;
+		gap: var(--s-4);
+	}
+
+	.side:empty,
+	.sideList:empty {
+		display: none;
+	}
+}
+
+@media (min-width: 1200px) {
+	.main {
+		grid-template-columns: minmax(0, 1fr) clamp(320px, 22vw, 420px);
+		align-items: stretch;
+	}
+
+	.side {
+		grid-template-rows: minmax(0, 1fr) auto;
+		gap: var(--s-3);
+		min-width: 0;
+		/* As tall as the panes; the lists scroll inside. */
+		height: clamp(560px, calc(100dvh - 2 * var(--s-4)), 1600px);
+	}
+
+	.sideList {
+		gap: var(--s-3);
+		min-height: 0;
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		border-radius: var(--radius);
+	}
+
+	.side .flags ul {
+		max-height: none;
+	}
+
+	.side .flags summary {
+		position: sticky;
+		top: 0;
+		z-index: 1;
+		border-radius: var(--radius) var(--radius) 0 0;
+		background: var(--surface-2);
+	}
+
+	/* One flag per two rows: what and where, then why. */
+	.side .flag {
+		grid-template-columns: minmax(0, 1fr) auto;
+		gap: var(--s-1) var(--s-3);
+	}
+
+	.side .flagReason {
+		grid-column: 1 / -1;
+	}
+
+	.side .override {
+		align-items: flex-start;
+	}
+
+	.side .override > .barButton {
+		margin-top: var(--s-1);
+	}
+
+	.sideFoot {
+		gap: var(--s-3);
+		padding: var(--s-4);
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		background: var(--surface-2);
+	}
+
+	.sideFoot .actions {
+		flex-direction: column;
+		align-items: stretch;
+		gap: var(--s-2);
+	}
+
+	.sideFoot .actions > button {
+		justify-content: center;
+	}
+
+	.sideFoot .shortcut {
+		text-align: center;
 	}
 }
