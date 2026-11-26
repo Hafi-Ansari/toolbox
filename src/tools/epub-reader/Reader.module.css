@@ -28,6 +28,9 @@
 	position: absolute;
 	inset: 0;
 	overflow: hidden;
+	/* Taps and sideways swipes are the reader's (see readerCss.ts TOUCH). */
+	touch-action: pan-y pinch-zoom;
+	-webkit-tap-highlight-color: transparent;
 }
 
 .frame {
