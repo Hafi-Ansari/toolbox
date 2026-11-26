@@ -1,7 +1,10 @@
-// The reader stylesheet, injected last into each chapter so it wins over the
-// publisher's CSS. Regenerated (and swapped in place) when settings or the
-// page geometry change, without re-rendering the chapter.
-import { type ReaderSettings, THEMES } from "./settings.ts";
+// The reader stylesheet, injected into each chapter. It lives in the "reader" cascade
+// layer, which comes before the "publisher" layer that holds the book's CSS (see
+// render.ts). So the book's normal rules still shape the page, while the reader's
+// !important rules (colors, fonts, size, spacing) win over the book's even when the book
+// uses !important itself. Regenerated (and swapped in place) when settings or the page
+// geometry change, without re-rendering the chapter.
+import { FONTS, type ReaderSettings, THEMES } from "./settings.ts";
 
 export interface Geometry {
 	/** Iframe (page) width and height in px. */
@@ -12,21 +15,52 @@ export interface Geometry {
 	padY: number;
 }
 
-const SERIF = `"Iowan Old Style", "Charter", "Bitstream Charter", "Sitka Text", Cambria, Georgia, serif`;
-const SANS = `"Geist Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif`;
+/** Attribute set on text blocks to record the book's own alignment (see markAlignment). */
+export const ALIGN_ATTR = "data-ra";
+
+/**
+ * Records which text blocks the book justifies ("j") or sets ragged ("s"), measured with
+ * the reader's own styles switched off. Centered and right-aligned blocks (titles, scene
+ * breaks, epigraphs) stay unmarked, so the alignment setting never flattens them.
+ */
+export function markAlignment(doc: Document) {
+	const own = doc.getElementById("reader-style") as HTMLStyleElement | null;
+	const sheet = own?.sheet;
+	if (sheet) sheet.disabled = true;
+	const view = doc.defaultView;
+	if (view) {
+		for (const el of Array.from(doc.body?.querySelectorAll("p, div, li, blockquote, dd, dt, td, section") ?? [])) {
+			const a = view.getComputedStyle(el).textAlign;
+			const mark = a === "justify" ? "j" : a === "start" || a === "left" || a === "-webkit-auto" ? "s" : null;
+			if (mark) el.setAttribute(ALIGN_ATTR, mark);
+		}
+	}
+	if (sheet) sheet.disabled = false;
+}
+
+/** The text color the reader forces, or null when the book keeps its own colors. */
+export function forcedTextColor(s: ReaderSettings): string | null {
+	return s.colors === "override" ? (s.textColor ?? THEMES[s.theme].text) : null;
+}
 
 export function readerCss(s: ReaderSettings, g: Geometry, fixed: boolean): string {
+	return `@layer reader {\n${rules(s, g, fixed)}\n}`;
+}
+
+function rules(s: ReaderSettings, g: Geometry, fixed: boolean): string {
 	const t = THEMES[s.theme];
+	const dim = s.dimImages && t.dark ? "filter: brightness(0.88);" : "";
 	if (fixed) {
 		// Fixed-layout pages keep the publisher's design; only the surround is themed.
 		return `html, body { margin: 0 !important; padding: 0 !important; overflow: hidden !important; }
-html { background: ${t.bg}; }
-${s.dimImages ? "img, svg, video { filter: brightness(0.9); }" : ""}`;
+html { background: ${t.bg} !important; }
+${dim ? `img, svg, video { ${dim} }` : ""}`;
 	}
 
 	const colW = g.width - 2 * g.padX;
 	const pageH = g.height - 2 * g.padY;
-	const font = s.font === "serif" ? SERIF : s.font === "sans" ? SANS : "";
+	const font = FONTS[s.font].stack;
+	const text = forcedTextColor(s);
 
 	const layout =
 		s.mode === "paged"
@@ -42,20 +76,42 @@ body {
 }
 img, svg, video, figure, table { break-inside: avoid; }`
 			: `html { overflow-x: hidden !important; overflow-y: auto !important; scrollbar-width: thin; scrollbar-color: ${t.muted} transparent; }
-body { padding: ${g.padY}px ${g.padX}px ${g.height * 0.4}px !important; }`;
+body { padding: ${g.padY}px ${g.padX}px ${Math.round(g.height * 0.4)}px !important; }`;
 
-	const colors =
-		s.colors === "override"
-			? `body * { color: inherit !important; background-color: transparent !important; border-color: ${t.muted}55 !important; }
+	const colors = text
+		? `body { color: ${text} !important; background: transparent !important; }
+body * {
+	color: inherit !important;
+	-webkit-text-fill-color: currentColor !important;
+	background-color: transparent !important;
+	border-color: color-mix(in srgb, ${text} 30%, transparent) !important;
+	text-shadow: none !important;
+}
 a, a * { color: ${t.link} !important; }
-::selection { background: ${t.link}55; }
-${
-	// Justified text in a narrow column leaves rivers of space; read ragged-right instead.
-	colW < 520 ? "p, li, blockquote, div { text-align: start !important; }" : ""
-}`
+svg text, svg tspan { fill: currentColor !important; }
+hr { background-color: color-mix(in srgb, ${text} 30%, transparent) !important; }`
+		: "";
+
+	const weight =
+		s.weight > 0
+			? // A hairline stroke thickens every glyph of any font by the same amount, so bold
+				// stays bolder than regular (unlike forcing font-weight, which flattens both).
+				`body { -webkit-text-stroke: ${(s.weight * 0.017).toFixed(3)}em currentColor !important; paint-order: stroke fill; }`
 			: "";
 
-	return `:root { color-scheme: dark; }
+	// Auto keeps the book's alignment, except that justified text in a narrow column
+	// (phones) leaves rivers of space, so it reads ragged-right there.
+	const align =
+		s.align === "left" || (s.align === "original" && colW < 520)
+			? `[${ALIGN_ATTR}="j"] { text-align: start !important; }`
+			: s.align === "justify"
+				? `[${ALIGN_ATTR}] { text-align: justify !important; hyphens: auto !important; -webkit-hyphens: auto !important; }`
+				: "";
+
+	const paragraph =
+		s.paragraph != null ? `p { margin-top: 0 !important; margin-bottom: ${s.paragraph}em !important; }` : "";
+
+	return `:root { color-scheme: ${t.dark ? "dark" : "light"}; }
 html {
 	background: ${t.bg} !important;
 	color: ${t.text};
@@ -77,8 +133,10 @@ body {
 	text-rendering: optimizeLegibility;
 }
 ${font ? `body, body *:not(code):not(pre):not(kbd):not(samp):not(tt) { font-family: ${font} !important; }` : ""}
-p, li, blockquote, dd { line-height: inherit !important; }
+body *:not(h1):not(h2):not(h3):not(h4):not(h5):not(h6) { line-height: inherit !important; }
+h1, h2, h3, h4, h5, h6 { line-height: 1.25 !important; }
 a { text-decoration-thickness: 1px; text-underline-offset: 2px; }
+::selection { background: color-mix(in srgb, ${t.link} 35%, transparent); }
 img, svg, video {
 	max-width: 100% !important;
 	/* Leave room for figure margins and a caption line: an image capped at the
@@ -87,10 +145,13 @@ img, svg, video {
 	max-height: calc(${pageH}px - 4em) !important;
 	height: auto;
 	object-fit: contain;
-	${s.dimImages ? "filter: brightness(0.9);" : ""}
+	${dim}
 }
 pre { white-space: pre-wrap !important; max-width: 100%; }
 table { max-width: 100%; }
 ${colors}
+${weight}
+${align}
+${paragraph}
 ${layout}`;
 }

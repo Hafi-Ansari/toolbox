@@ -1,24 +1,13 @@
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Icon } from "../../lib/Icon.tsx";
-import { Pills } from "../../lib/ui.tsx";
 import { type Book, chapterTitle, flattenToc } from "./book.ts";
+import { RIcon } from "./icons.tsx";
 import { type Position, savePosition } from "./library.ts";
 import * as P from "./paginate.ts";
 import s from "./Reader.module.css";
-import { type Geometry, readerCss } from "./readerCss.ts";
+import { type Geometry, markAlignment, readerCss } from "./readerCss.ts";
 import { type Chapter, Resources, renderChapter } from "./render.ts";
-import {
-	type FontChoice,
-	loadSettings,
-	MEASURE_EM,
-	type ReaderSettings,
-	SIZE_MAX,
-	SIZE_MIN,
-	saveSettings,
-	THEMES,
-	type Theme,
-	type Width,
-} from "./settings.ts";
+import { SettingsPanel } from "./SettingsPanel.tsx";
+import { loadSettings, MEASURE_EM, type ReaderSettings, saveSettings, THEMES } from "./settings.ts";
 
 const PLACEHOLDER = "/*READER_CSS*/";
 
@@ -159,6 +148,7 @@ export function Reader({
 				frame.style.left = `${Math.round((sw - g.width * scale) / 2)}px`;
 				frame.style.top = `${Math.round(top + (sh - top - bottom - g.height * scale) / 2)}px`;
 				frame.style.transform = `scale(${scale})`;
+				stage.style.setProperty("--page-w", `${Math.round(g.width * scale)}px`);
 				return g;
 			} else {
 				const padY = sh < 640 ? 40 : 56;
@@ -171,6 +161,7 @@ export function Reader({
 			frame.style.left = `${Math.round((sw - g.width * scale) / 2)}px`;
 			frame.style.top = `${Math.round((sh - g.height * scale) / 2)}px`;
 			frame.style.transform = scale === 1 ? "" : `scale(${scale})`;
+			stage.style.setProperty("--page-w", `${Math.round(g.width * scale)}px`);
 			return g;
 		},
 		[book],
@@ -317,6 +308,7 @@ export function Reader({
 				await nextFrame(); // first layout; web fonts may still be loading (refined below)
 				if (my !== token.current) return;
 				attach(doc);
+				if (!book.spine[i].fixed) markAlignment(doc);
 				spineRef.current = i;
 				setSpine(i);
 				place(doc, target);
@@ -449,6 +441,36 @@ export function Reader({
 			void display(i, { fragment, fraction: 0 });
 		},
 		[display, update, moved, frameDoc],
+	);
+
+	/** The spine item and the fraction through it at a 0–1 position in the whole book. */
+	const locate = useCallback(
+		(p: number): { i: number; fraction: number } => {
+			const n = book.spine.length;
+			if (book.totalSize <= 0) {
+				const i = Math.min(n - 1, Math.floor(p * n));
+				return { i, fraction: p * n - i };
+			}
+			const at = p * book.totalSize;
+			let i = 0;
+			while (i < n - 1 && before[i + 1] <= at) i++;
+			const size = book.spine[i].size;
+			return { i, fraction: size > 0 ? Math.min(1, Math.max(0, (at - before[i]) / size)) : 0 };
+		},
+		[book, before],
+	);
+
+	const seek = useCallback(
+		(p: number) => {
+			const { i, fraction } = locate(p);
+			moved();
+			const doc = frameDoc();
+			if (i === spineRef.current && doc && !busy.current) {
+				P.goToFraction(doc, fraction, applied.current.mode, geom.current);
+				update();
+			} else void display(i, { fraction });
+		},
+		[locate, display, update, moved, frameDoc],
 	);
 
 	/* ---------- Bars */
@@ -618,8 +640,10 @@ export function Reader({
 	const fixed = book.spine[spine]?.fixed ?? false;
 	const theme = THEMES[effective.theme];
 	const fraction = fixed ? 0 : view.fraction;
-	const percent = Math.round(percentAt(spine, fraction) * 100);
+	const progress = percentAt(spine, fraction);
+	const percent = Math.round(progress * 100);
 	const chapter = chapterTitle(book, spine);
+	const paged = effective.mode === "paged";
 	const currentToc = useMemo(() => {
 		let best = -1;
 		toc.forEach((t, idx) => {
@@ -630,68 +654,127 @@ export function Reader({
 
 	const readout = fixed
 		? `Page ${spine + 1} of ${book.spine.length}`
-		: effective.mode === "paged"
+		: paged
 			? `${view.page + 1} / ${view.pages} · ${percent}%`
 			: `${percent}%`;
+	const left = paged && !fixed ? view.pages - view.page - 1 : -1;
+	const chapterLeft =
+		left > 0 ? `${left} ${left === 1 ? "page" : "pages"} left in chapter` : left === 0 ? "Last page of chapter" : "";
+
+	// Scrubbing through the book: preview while dragging, jump on release.
+	const [scrub, setScrub] = useState<number | null>(null);
+	const scrubTo = scrub == null ? null : locate(scrub);
+	const commitScrub = () => {
+		if (scrub != null) seek(Math.min(0.9999, scrub));
+		setScrub(null);
+	};
+
+	const [cover, setCover] = useState<string | null>(null);
+	useEffect(() => {
+		let live = true;
+		if (book.coverPath) void resources.url(book.coverPath, null).then((u) => live && setCover(u));
+		return () => {
+			live = false;
+		};
+	}, [book, resources]);
+
+	// Bring the current chapter into view when the contents open.
+	const tocRef = useRef<HTMLOListElement>(null);
+	useEffect(() => {
+		if (panel !== "toc") return;
+		tocRef.current?.querySelector('[aria-current="location"]')?.scrollIntoView({ block: "center" });
+	}, [panel]);
 
 	const update$ = (patch: Partial<ReaderSettings>) => setSettings((st) => ({ ...st, ...patch }));
 
-	const style = { "--r-bg": theme.bg, "--r-text": theme.text, "--r-muted": theme.muted } as CSSProperties;
+	const style = {
+		"--r-bg": theme.bg,
+		"--r-text": theme.text,
+		"--r-muted": theme.muted,
+		"--r-surface": theme.surface,
+		"--r-border": theme.border,
+		"--r-accent": theme.accent,
+		"--r-on-accent": theme.onAccent,
+		colorScheme: theme.dark ? "dark" : "light",
+	} as CSSProperties;
+	const showBars = bars || !!panel;
+	const toggle = (p: "toc" | "settings") => setPanel((cur) => (cur === p ? null : p));
+	const keepBars = {
+		onMouseEnter: () => {
+			overBars.current = true;
+		},
+		onMouseLeave: () => {
+			overBars.current = false;
+		},
+	};
 
 	return (
 		// biome-ignore lint/a11y/noStaticElementInteractions: mouse movement only reveals the bars; keys work without it
 		<div className={s.reader} style={style} onMouseMove={poke}>
-			{/* biome-ignore lint/a11y/noStaticElementInteractions: hover only keeps the bar from fading */}
-			<header
-				className={cx(s.top, !bars && !panel && s.hidden)}
-				onMouseEnter={() => {
-					overBars.current = true;
-				}}
-				onMouseLeave={() => {
-					overBars.current = false;
-				}}
-			>
-				<button type="button" className={s.iconBtn} onClick={onClose} aria-label="Close book" title="Close (Esc)">
-					<Icon name="back" size={18} />
+			<header className={cx(s.top, !showBars && s.hidden)} {...keepBars}>
+				<button
+					type="button"
+					className={s.iconBtn}
+					onClick={onClose}
+					aria-label="Close book"
+					title="Back to library (Esc)"
+				>
+					<RIcon name="back" size={20} />
 				</button>
 				<div className={s.titles}>
 					<span className={s.bookTitle}>{book.title}</span>
 					{chapter && chapter !== book.title && <span className={s.chapterTitle}>{chapter}</span>}
 				</div>
-				<button
-					type="button"
-					className={cx(s.iconBtn, panel === "toc" && s.active)}
-					onClick={() => setPanel((p) => (p === "toc" ? null : "toc"))}
-					aria-label="Contents"
-					aria-expanded={panel === "toc"}
-					title="Contents (T)"
-				>
-					<Icon name="menu" size={18} />
-				</button>
-				<button
-					type="button"
-					className={cx(s.iconBtn, s.aa, panel === "settings" && s.active)}
-					onClick={() => setPanel((p) => (p === "settings" ? null : "settings"))}
-					aria-label="Reading settings"
-					aria-expanded={panel === "settings"}
-					title="Reading settings (,)"
-				>
-					Aa
-				</button>
+				<div className={s.actions}>
+					<button
+						type="button"
+						className={cx(s.iconBtn, panel === "toc" && s.active)}
+						onClick={() => toggle("toc")}
+						aria-label="Contents"
+						aria-expanded={panel === "toc"}
+						title="Contents (T)"
+					>
+						<RIcon name="toc" size={20} />
+					</button>
+					<button
+						type="button"
+						className={cx(s.iconBtn, s.aa, panel === "settings" && s.active)}
+						onClick={() => toggle("settings")}
+						aria-label="Reading settings"
+						aria-expanded={panel === "settings"}
+						title="Reading settings (,)"
+					>
+						<span aria-hidden="true">
+							A<small>a</small>
+						</span>
+					</button>
+				</div>
 			</header>
 
-			{/* biome-ignore lint/a11y/useKeyWithClickEvents lint/a11y/noStaticElementInteractions: margin clicks mirror the arrow keys */}
-			<div
-				ref={stageRef}
-				className={s.stage}
-				onClick={(e) => {
-					// Clicks in the margins beside the page (wide screens) turn pages too.
-					if (e.target !== stageRef.current) return;
-					const half = (stageRef.current?.clientWidth ?? 0) / 2;
-					e.clientX < half ? prev() : next();
-				}}
-			>
+			<div ref={stageRef} className={s.stage}>
 				<iframe ref={frameRef} className={s.frame} title={book.title} sandbox="allow-same-origin" />
+				{(paged || fixed) && (
+					<>
+						<button
+							type="button"
+							className={cx(s.edge, s.edgePrev)}
+							onClick={book.rtl ? next : prev}
+							tabIndex={-1}
+							aria-label={book.rtl ? "Next page" : "Previous page"}
+						>
+							<RIcon name="chevron-left" size={28} />
+						</button>
+						<button
+							type="button"
+							className={cx(s.edge, s.edgeNext)}
+							onClick={book.rtl ? prev : next}
+							tabIndex={-1}
+							aria-label={book.rtl ? "Previous page" : "Next page"}
+						>
+							<RIcon name="chevron-right" size={28} />
+						</button>
+					</>
+				)}
 				{loading && <div className={s.loading} role="status" aria-label="Loading" />}
 				{error && (
 					<div className={s.error} role="alert">
@@ -700,44 +783,84 @@ export function Reader({
 				)}
 			</div>
 
-			<footer className={s.bottom}>
-				<div
-					className={s.track}
-					role="progressbar"
-					aria-label="Progress through the book"
-					aria-valuemin={0}
-					aria-valuemax={100}
-					aria-valuenow={percent}
-				>
-					<div className={s.fill} style={{ width: `${percent}%` }} />
+			<footer className={cx(s.bottom, !showBars && s.hidden)} {...keepBars}>
+				<div className={s.scrubInfo}>
+					<span className={s.scrubChapter}>
+						{scrubTo ? chapterTitle(book, scrubTo.i) || `Section ${scrubTo.i + 1}` : chapter || book.title}
+					</span>
+					<span className={s.scrubMeta}>{scrub != null ? `${Math.round(scrub * 100)}%` : chapterLeft}</span>
 				</div>
-				<span className={s.readout} data-readout>
-					{readout}
-				</span>
+				<input
+					type="range"
+					className={s.scrubber}
+					min={0}
+					max={1000}
+					step={1}
+					value={Math.round((scrub ?? progress) * 1000)}
+					onChange={(e) => setScrub(Number(e.target.value) / 1000)}
+					onPointerUp={commitScrub}
+					onKeyUp={commitScrub}
+					onBlur={() => scrub != null && commitScrub()}
+					aria-label="Position in book"
+					aria-valuetext={`${scrub != null ? Math.round(scrub * 100) : percent}%`}
+					style={{ "--p": scrub ?? progress } as CSSProperties}
+				/>
 			</footer>
 
-			{panel && <div className={s.scrim} onClick={() => setPanel(null)} aria-hidden="true" />}
+			<div className={cx(s.readout, showBars && s.readoutUp)} data-readout>
+				{readout}
+			</div>
+
+			{panel && (
+				<div
+					className={cx(s.scrim, panel === "settings" && s.scrimClear)}
+					onClick={() => setPanel(null)}
+					aria-hidden="true"
+				/>
+			)}
 
 			{panel === "toc" && (
 				<nav className={s.drawer} aria-label="Contents" data-panel>
-					<div className={s.panelHead}>
-						<span className={s.panelTitle}>Contents</span>
+					<div className={s.drawerHead}>
+						<div className={s.drawerBook}>
+							{cover ? (
+								<img className={s.drawerCover} src={cover} alt="" />
+							) : (
+								<span className={cx(s.drawerCover, s.drawerCoverBlank)} aria-hidden="true">
+									{book.title.slice(0, 1).toUpperCase()}
+								</span>
+							)}
+							<div className={s.drawerMeta}>
+								<span className={s.drawerTitle}>{book.title}</span>
+								{book.author && <span className={s.drawerAuthor}>{book.author}</span>}
+								<span className={s.drawerProgress}>
+									<span className={s.miniBar}>
+										<span style={{ width: `${percent}%` }} />
+									</span>
+									{percent}% read
+								</span>
+							</div>
+						</div>
 						<button type="button" className={s.iconBtn} onClick={() => setPanel(null)} aria-label="Close contents">
-							<Icon name="x" size={16} />
+							<RIcon name="x" size={18} />
 						</button>
 					</div>
-					<ol className={s.toc}>
+					<ol className={s.toc} ref={tocRef}>
+						{toc.length === 0 && <li className={s.tocEmpty}>This book has no table of contents.</li>}
 						{toc.map((t, idx) => (
 							// biome-ignore lint/suspicious/noArrayIndexKey: TOC entries can repeat; the list never reorders
 							<li key={`${idx}-${t.spine}-${t.fragment}`}>
 								<button
 									type="button"
-									className={cx(s.tocItem, idx === currentToc && s.current)}
-									style={{ paddingLeft: `${12 + t.depth * 16}px` }}
+									className={cx(s.tocItem, idx === currentToc && s.current, t.depth === 0 && s.tocTop)}
+									style={{ paddingLeft: `${14 + t.depth * 16}px` }}
 									onClick={() => jump(t.spine, t.fragment)}
 									aria-current={idx === currentToc ? "location" : undefined}
 								>
-									{t.title}
+									<span className={s.tocText}>{t.title}</span>
+									<span className={s.tocPct} aria-hidden="true">
+										{Math.round(percentAt(t.spine, 0) * 100)}%
+									</span>
 								</button>
 							</li>
 						))}
@@ -746,110 +869,13 @@ export function Reader({
 			)}
 
 			{panel === "settings" && (
-				<div className={s.settings} role="dialog" aria-label="Reading settings" data-panel>
-					<div className={s.panelHead}>
-						<span className={s.panelTitle}>Reading settings</span>
-						<button type="button" className={s.iconBtn} onClick={() => setPanel(null)} aria-label="Close settings">
-							<Icon name="x" size={16} />
-						</button>
-					</div>
-					<div className={s.settingsBody}>
-						<Pills<Theme>
-							label="Theme"
-							value={settings.theme}
-							options={[
-								{ value: "dark", label: "Dark" },
-								{ value: "black", label: "Black" },
-							]}
-							onChange={(theme) => update$({ theme })}
-						/>
-						{!fixed && (
-							<>
-								<div className={s.sizeRow}>
-									<span className={s.label}>Text size</span>
-									<div className={s.stepper}>
-										<button
-											type="button"
-											onClick={() => update$({ size: Math.max(SIZE_MIN, settings.size - 1) })}
-											disabled={settings.size <= SIZE_MIN}
-											aria-label="Smaller text"
-										>
-											A−
-										</button>
-										<span className={s.sizeValue}>{settings.size}px</span>
-										<button
-											type="button"
-											onClick={() => update$({ size: Math.min(SIZE_MAX, settings.size + 1) })}
-											disabled={settings.size >= SIZE_MAX}
-											aria-label="Larger text"
-										>
-											A+
-										</button>
-									</div>
-								</div>
-								<Pills<FontChoice>
-									label="Font"
-									value={settings.font}
-									options={[
-										{ value: "serif", label: "Serif" },
-										{ value: "sans", label: "Sans" },
-										{ value: "original", label: "Book" },
-									]}
-									onChange={(font) => update$({ font })}
-								/>
-								<Pills<ReaderSettings["lineHeight"]>
-									label="Line spacing"
-									value={settings.lineHeight}
-									options={[
-										{ value: "1.4", label: "Tight" },
-										{ value: "1.6", label: "Normal" },
-										{ value: "1.8", label: "Loose" },
-									]}
-									onChange={(lineHeight) => update$({ lineHeight })}
-								/>
-								<Pills<Width>
-									label="Line width"
-									value={settings.width}
-									options={[
-										{ value: "narrow", label: "Narrow" },
-										{ value: "medium", label: "Medium" },
-										{ value: "wide", label: "Wide" },
-									]}
-									onChange={(width) => update$({ width })}
-								/>
-								{!book.rtl && (
-									<Pills<ReaderSettings["mode"]>
-										label="Layout"
-										value={settings.mode}
-										options={[
-											{ value: "paged", label: "Pages" },
-											{ value: "scroll", label: "Scroll" },
-										]}
-										onChange={(mode) => update$({ mode })}
-									/>
-								)}
-								<Pills<ReaderSettings["colors"]>
-									label="Book colors"
-									value={settings.colors}
-									options={[
-										{ value: "override", label: "Readable" },
-										{ value: "original", label: "Original" },
-									]}
-									onChange={(colors) => update$({ colors })}
-								/>
-							</>
-						)}
-						<Pills<"on" | "off">
-							label="Dim images"
-							value={settings.dimImages ? "on" : "off"}
-							options={[
-								{ value: "on", label: "On" },
-								{ value: "off", label: "Off" },
-							]}
-							onChange={(v) => update$({ dimImages: v === "on" })}
-						/>
-					</div>
-				</div>
+				<SettingsPanel
+					settings={settings}
+					update={update$}
+					fixed={fixed}
+					rtl={book.rtl}
+					onClose={() => setPanel(null)}
+				/>
 			)}
 		</div>
 	);

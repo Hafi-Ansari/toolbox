@@ -79,6 +79,7 @@ test.describe("EPUB reader", () => {
 		await page.waitForTimeout(600);
 		expect(await visibleMarkers(page)).toContain(before);
 
+		await page.getByRole("tab", { name: "Layout" }).click();
 		await page.getByRole("radio", { name: "Scroll" }).check();
 		await expect(readout(page)).toHaveText(/^\d+%$/);
 		await page.waitForTimeout(600);
@@ -102,7 +103,7 @@ test.describe("EPUB reader", () => {
 
 		await page.keyboard.press("Escape"); // closes the book
 		await expect(page).toHaveURL(/\/read$/);
-		const recent = page.getByRole("region", { name: "Recent" });
+		const recent = page.getByRole("region", { name: "Continue reading" });
 		await expect(recent.getByText("Sample River Book")).toBeVisible();
 		await expect(recent.getByText(/\d+%/)).toBeVisible();
 		await recent.getByRole("button", { name: /^Sample River Book/ }).click();
@@ -140,6 +141,39 @@ test.describe("EPUB reader", () => {
 			() => ((document.querySelector("iframe") as HTMLIFrameElement).contentDocument as Document).body.innerHTML,
 		);
 		expect(html).not.toMatch(/<script|onerror|javascript:|tracker\.invalid/i);
+	});
+
+	test("reader colors and sizes win over a book's !important styles", async ({ page }) => {
+		await page.goto("/read");
+		await page.locator('input[type="file"]').setInputFiles("out/stubborn.epub");
+		const frame = page.frameLocator('iframe[title="Stubborn Colors"]');
+		await expect(frame.getByText("Pinned black paragraph.")).toBeVisible();
+		const probe = () =>
+			page.evaluate(() => {
+				const doc = (document.querySelector("iframe") as HTMLIFrameElement).contentDocument as Document;
+				return Array.from(doc.querySelectorAll("p")).map((p) => {
+					const cs = getComputedStyle(p);
+					return { color: cs.color, fill: cs.webkitTextFillColor, size: Number.parseFloat(cs.fontSize) };
+				});
+			});
+		for (const p of await probe()) {
+			expect(p.color).toBe("rgb(232, 237, 235)");
+			expect(p.fill).toBe("rgb(232, 237, 235)");
+		}
+		const before = (await probe())[0].size;
+
+		await page.getByRole("button", { name: "Reading settings" }).click();
+		await page.getByTitle("Amber").click();
+		await page.getByRole("button", { name: "Larger text" }).click();
+		await expect.poll(async () => (await probe())[0].color).toBe("rgb(255, 207, 135)");
+		for (const p of await probe()) expect(p.fill).toBe("rgb(255, 207, 135)");
+		expect((await probe())[0].size).toBeGreaterThan(before);
+
+		await page.getByRole("tab", { name: "Layout" }).click();
+		await page.getByRole("switch", { name: /own colors/ }).check();
+		await expect.poll(async () => (await probe())[0].color).toBe("rgb(0, 0, 0)");
+		await page.getByRole("button", { name: "Reset to defaults" }).click();
+		await expect.poll(async () => (await probe())[0].color).toBe("rgb(232, 237, 235)");
 	});
 
 	test("rejects files that aren't EPUBs", async ({ page }) => {
