@@ -44,6 +44,57 @@ const MIME_BY_EXT: Record<string, string> = {
 	m4a: "audio/mp4",
 };
 
+/**
+ * Publisher CSS goes into a cascade layer that comes after the reader's. For normal
+ * declarations later layers win, so the book's own design still applies; for !important
+ * ones earlier layers win, so the reader's overrides (colors, fonts, size) beat the book's
+ * even when it uses !important with high specificity. `@namespace` can't live inside a
+ * layer block, so it is hoisted; `@charset` is meaningless in a <style> and dropped.
+ */
+export const LAYER_ORDER = "@layer reader, publisher;";
+
+export function layered(css: string, layer = "publisher"): string {
+	const hoisted: string[] = [];
+	const body = relativeSizes(css)
+		.replace(/@charset\s+[^;]*;/gi, "")
+		.replace(/@namespace\s+[^;]*;/gi, (m) => {
+			hoisted.push(m);
+			return "";
+		});
+	return `${hoisted.join("\n")}\n@layer ${layer} {\n${body}\n}`;
+}
+
+const KEYWORD_REM: Record<string, number> = {
+	"xx-small": 0.5625,
+	"x-small": 0.625,
+	small: 0.8125,
+	medium: 1,
+	large: 1.125,
+	"x-large": 1.5,
+	"xx-large": 2,
+	"xxx-large": 3,
+};
+
+/**
+ * Absolute font sizes (px, pt, keywords) would ignore the reader's text size, so they
+ * become rem against the usual 16px base: 12px → 0.75rem, 11pt → 0.917rem. The reader
+ * sets the root size, so the book's proportions survive and everything scales together.
+ */
+export function relativeSizes(css: string): string {
+	return css.replace(
+		/(font-size\s*:\s*)(?:(\d*\.?\d+)(px|pt)\b|(xx-small|x-small|small|medium|large|x-large|xx-large|xxx-large)\b)/gi,
+		(_m, prop: string, n: string | undefined, unit: string | undefined, kw: string | undefined) => {
+			const rem = kw ? KEYWORD_REM[kw.toLowerCase()] : (Number(n) * (unit?.toLowerCase() === "pt" ? 4 / 3 : 1)) / 16;
+			return `${prop}${Number(rem.toFixed(4))}rem`;
+		},
+	);
+}
+
+/** Inline styles outrank every layer, so their !important flags are dropped (the declarations stay). */
+export function softenInline(style: string): string {
+	return relativeSizes(style.replace(/\s*!\s*important/gi, ""));
+}
+
 /** Per-book resource cache. Fonts and stylesheets are shared across chapters; images are per chapter. */
 export class Resources {
 	private readonly book: Book;
@@ -203,12 +254,13 @@ export async function renderChapter(
 		}
 		const srcset = el.getAttribute("srcset");
 		if (srcset) el.removeAttribute("srcset"); // src is enough; avoids resolving every candidate
-		const style = el.getAttribute("style");
-		if (style && /url\(/i.test(style)) el.setAttribute("style", await resources.rewriteCss(style, item.path));
+		let style = el.getAttribute("style");
+		if (style && /url\(/i.test(style)) style = await resources.rewriteCss(style, item.path);
+		if (style != null) el.setAttribute("style", softenInline(style));
 	}
 
 	for (const style of Array.from(body.querySelectorAll("style"))) {
-		style.textContent = await resources.rewriteCss(style.textContent ?? "", item.path);
+		style.textContent = layered(await resources.rewriteCss(style.textContent ?? "", item.path));
 	}
 
 	// Carry body classes/ids/dir/lang (publishers style on them).
@@ -225,15 +277,18 @@ export async function renderChapter(
 		meta.setAttribute("content", `width=${viewport.width}, height=${viewport.height}`);
 		out.head.append(meta);
 	}
+	const order = out.createElement("style");
+	order.textContent = LAYER_ORDER;
+	out.head.append(order);
 	for (const css of styles) {
 		const el = out.createElement("style");
 		el.setAttribute("data-publisher", "");
-		el.textContent = css;
+		el.textContent = layered(css);
 		out.head.append(el);
 	}
 	const reader = out.createElement("style");
 	reader.id = "reader-style";
-	reader.textContent = readerCss;
+	reader.textContent = readerCss; // already wrapped in @layer reader (see readerCss.ts)
 	out.head.append(reader);
 
 	if (body.localName === "body") out.body.replaceWith(body);
