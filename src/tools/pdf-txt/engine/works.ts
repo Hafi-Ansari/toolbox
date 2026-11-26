@@ -235,12 +235,15 @@ export function startsFromOutline(outline: OutlineEntry[], pages: PageRows[], fl
 
 /** Starts from layout titles. Text before the first title is an untitled opening (or front matter). */
 export function startsFromLayout(titles: TitleCandidate[], pages: PageRows[], flags: Flag[]): Start[] {
-	// Front and back matter by title; everything after back matter (ads, previews) is matter too.
+	// Front and back matter by title. Everything after back matter (ads, previews) is matter
+	// too, but only in the last quarter of the book: earlier, a "Notes" or "Acknowledgments"
+	// heading (an introduction's endnotes) is matter for its own stretch only.
+	const lastPage = pages.length ? pages[pages.length - 1].index : 0;
 	let back = false;
 	let seenWork = false;
 	const kinds = titles.map((t): WorkKind => {
 		if (isMatterTitle(t.text)) {
-			if (seenWork) back = true;
+			if (seenWork && t.page >= lastPage * 0.75) back = true;
 			return "matter";
 		}
 		if (back) return "matter";
@@ -258,6 +261,7 @@ export function startsFromLayout(titles: TitleCandidate[], pages: PageRows[], fl
 		source: "layout",
 		confidence: Math.min(0.95, Math.max(0.3, t.score)),
 	}));
+	markFrontMatter(starts, pages, lastPage);
 	for (const s of starts)
 		if (s.confidence < 0.75 && s.kind === "work")
 			flags.push({
@@ -287,6 +291,84 @@ export function startsFromLayout(titles: TitleCandidate[], pages: PageRows[], fl
 		});
 	}
 	return starts;
+}
+
+const COPYRIGHT = /copyright|©|\bisbn\b|all rights reserved|library of congress|first published/i;
+
+const LABEL = /^(?:chapter|part|book)\b|^(?:\d+|[IVXLC]+)\.?$/i;
+
+/**
+ * Joins stacked headings into one title: a work with no body whose heading sits
+ * directly above the next work's ("CHAPTER TWO" / "Deconstructing My Self" /
+ * "LEVI S. GOVONI" → "CHAPTER TWO: Deconstructing My Self — LEVI S. GOVONI").
+ */
+export function joinStackedTitles(starts: Start[]): Start[] {
+	const out: Start[] = [];
+	for (const s of starts) {
+		const prev = out[out.length - 1];
+		const stacked =
+			prev &&
+			prev.kind === "work" &&
+			s.kind === "work" &&
+			prev.source === "layout" &&
+			s.source === "layout" &&
+			prev.page === s.page &&
+			prev.title &&
+			s.row === prev.row + prev.titleRows;
+		if (!stacked) {
+			out.push(s);
+			continue;
+		}
+		const joiner = LABEL.test(prev.title.trim()) && !prev.title.includes(":") ? ": " : " — ";
+		const box =
+			prev.titleBox && s.titleBox
+				? {
+						x0: Math.min(prev.titleBox.x0, s.titleBox.x0),
+						y0: Math.min(prev.titleBox.y0, s.titleBox.y0),
+						x1: Math.max(prev.titleBox.x1, s.titleBox.x1),
+						y1: Math.max(prev.titleBox.y1, s.titleBox.y1),
+					}
+				: (prev.titleBox ?? s.titleBox);
+		out[out.length - 1] = {
+			...s,
+			title: `${prev.title.trim()}${joiner}${s.title.trim()}`,
+			row: prev.row,
+			titleRows: prev.titleRows + s.titleRows,
+			titleBox: box,
+			confidence: Math.max(prev.confidence, s.confidence),
+		};
+	}
+	return out;
+}
+
+/**
+ * Front matter that has no matter title of its own: in the first 15% of the
+ * book, everything before an early "Contents" (title page, copyright page,
+ * dedication), and any stretch whose text carries copyright wording. Title-page
+ * lines set large are otherwise taken for works. (A copyright page is short:
+ * stretches over two pages are left alone.)
+ */
+function markFrontMatter(starts: Start[], pages: PageRows[], lastPage: number) {
+	const front = lastPage * 0.15;
+	const contents = starts.findIndex((s) => s.page <= front && /^(?:table of )?contents$/i.test(s.title.trim()));
+	for (let i = 0; i < contents; i++) starts[i].kind = "matter";
+	const pageOf = new Map(pages.map((p) => [p.index, p]));
+	starts.forEach((s, i) => {
+		const next = starts[i + 1];
+		// Copyright pages are short; a long stretch that mentions publishing is text.
+		if (s.kind === "matter" || s.page > front || (next?.page ?? lastPage) - s.page > 2) return;
+		let text = "";
+		for (let p = s.page; p <= (next?.page ?? s.page); p++) {
+			const rows = pageOf.get(p)?.rows ?? [];
+			const from = p === s.page ? s.row + s.titleRows : 0;
+			const to = next && p === next.page ? next.row : rows.length;
+			text += ` ${rows
+				.slice(from, to)
+				.map((r) => r.text)
+				.join(" ")}`;
+		}
+		if (COPYRIGHT.test(text)) s.kind = "matter";
+	});
 }
 
 /**
@@ -328,10 +410,10 @@ export function chooseStarts(
 			layoutFlags,
 		).filter((s) => s.source !== "start");
 		flags.push(...layoutFlags);
-		const starts = [...keep, ...layout].sort((a, b) => a.page - b.page || a.row - b.row);
+		const starts = joinStackedTitles([...keep, ...layout].sort((a, b) => a.page - b.page || a.row - b.row));
 		return { starts, detection: "outline+layout" };
 	}
-	const starts = startsFromLayout(titles, pages, layoutFlags);
+	const starts = joinStackedTitles(startsFromLayout(titles, pages, layoutFlags));
 	flags.push(...layoutFlags);
 	return { starts, detection: "layout" };
 }
