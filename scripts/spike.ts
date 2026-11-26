@@ -113,7 +113,9 @@ function convertEpub(file: string) {
 function convertPdf(file: string) {
 	console.log(`\nPDF → EPUB: ${file}`);
 	console.log("   info:", inspect(fileHandle(file), "pdf"));
-	for (const mode of ["reflow", "fixed"] as const) {
+	const only = process.argv[3];
+	const modes: ("reflow" | "fixed")[] = only === "reflow" || only === "fixed" ? [only] : ["reflow", "fixed"];
+	for (const mode of modes) {
 		const dest = path.join(OUT, `${path.basename(file, ".pdf")}.${mode}.epub`);
 		const w = writeSink(dest);
 		const r = pdfToEpub(fileHandle(file), { mode }, w.sink, progress);

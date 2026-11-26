@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
 	bodyFontSize,
+	folioOf,
 	furnitureKey,
+	isJunkText,
+	joinFragments,
 	joinLines,
 	type Line,
 	type PageModel,
@@ -144,5 +147,106 @@ describe("renderParas", () => {
 			{ kind: "p", text: "next", page: 0 },
 		]);
 		expect(html).toBe('<h2>A &amp; B</h2>\n<p class="first">&lt;tag&gt;</p>\n<p>next</p>\n');
+	});
+});
+
+describe("running heads with page numbers", () => {
+	it("reads folios at either end of a header line", () => {
+		expect(folioOf("30 What Is Gender?")).toEqual({ kind: "arabic", value: 30 });
+		expect(folioOf("Introduction xvii")).toEqual({ kind: "roman", value: 17 });
+		expect(folioOf("PART I")).toBeNull(); // uppercase roman is a heading, not a folio
+		expect(folioOf("What Is Gender?")).toBeNull();
+	});
+
+	it("strips chapter running heads that change every few pages, keeping body text", () => {
+		// Printed page number = index - 10; each chapter has its own running head.
+		const heads = ["Coatlicue", "Coatlicue", "Namesake", "Namesake", "Scrimshaw"];
+		const pages = heads.map((h, i) =>
+			page(i + 20, [line(i % 2 ? `${h} ${i + 10}` : `${i + 10} ${h}`, 20)], [line(`Body ${i} text.`, 200)]),
+		);
+		stripFurniture(pages);
+		const left = pages.flatMap((p) => p.blocks.flatMap((b) => (b.kind === "text" ? b.lines.map((l) => l.text) : [])));
+		expect(left).toEqual(heads.map((_, i) => `Body ${i} text.`));
+	});
+
+	it("keeps a top-of-page line that merely starts with a number", () => {
+		const pages = [page(5, [line("1984 was the year it began.", 20)], [line("More text.", 200)])];
+		stripFurniture(pages);
+		expect(pages[0].blocks).toHaveLength(2);
+	});
+});
+
+describe("OCR text layers", () => {
+	const ocr = (index: number, ...blocks: Line[][]): PageModel => ({ ...page(index, ...blocks), ocr: true });
+	const at = (text: string, y: number, x0 = 54, x1 = 378, opts: Partial<Line> = {}) =>
+		line(text, y, { x0, x1, ...opts });
+
+	it("flags show-through noise but not real text", () => {
+		expect(isJunkText("Saeed ae on - ile BeLa= vi xt ue Th _ ; oe a ann sans")).toBe(true);
+		expect(isJunkText("~ pre ee — —— oe ca")).toBe(true);
+		expect(isJunkText("NONBINARY")).toBe(false);
+		expect(
+			isJunkText("10. Kristen Hare, “AP Style Change: Singular They Is Acceptable in Limited Cases,” Poynter"),
+		).toBe(false);
+	});
+
+	it("rejoins one printed line split into word groups", () => {
+		const joined = joinFragments([
+			at("okay way", 100, 56, 103),
+			at("to communicate,", 100, 111, 193),
+			at("as long as we", 100, 202, 300),
+			at("next line", 114),
+		]);
+		expect(joined.map((l) => l.text)).toEqual(["okay way to communicate, as long as we", "next line"]);
+	});
+
+	it("rebuilds paragraphs from line-sized blocks, splitting at first-line indents", () => {
+		const p = ocr(
+			3,
+			[at("witches, butches, and hippies became part of my landscape. I decided", 50)],
+			[
+				at("I must be one of them. I became a free spirit, openly queer in jeans", 64),
+				at("and a womanhood.", 78, 54, 160),
+			],
+			[at("I was twenty-one the first time I heard the word “genderqueer.” It", 92, 66)],
+			[at("fell into my heart like the seed of a redwood tree.", 106, 54, 300)],
+		);
+		const paras = toParagraphs([p], 11);
+		expect(paras.map((x) => ("text" in x ? x.text.slice(0, 20) : ""))).toEqual([
+			"witches, butches, an",
+			"I was twenty-one the",
+		]);
+	});
+
+	it("keeps short dialogue lines as separate paragraphs", () => {
+		const p = ocr(
+			3,
+			[at("“I suppose I didn’t feel the need to.”", 50, 54, 220)],
+			[at("“All the other subjects did.”", 64, 54, 180)],
+			[at("x".repeat(60), 78)],
+		);
+		expect(toParagraphs([p], 11).filter((x) => x.kind === "p").length).toBe(3);
+	});
+
+	it("continues a paragraph across a page break and a footnote", () => {
+		const a = ocr(
+			1,
+			[at("of the early days on testosterone, the experience of not feeling like a", 500)],
+			[at("1. More information available at www.asexuality.org.", 560, 70, 280, { y1: 570 })],
+		);
+		const b = ocr(2, [at("woman, the plain honesty and acceptance these guys had about who", 40)]);
+		const paras = toParagraphs([a, b], 11).map((x) => ("text" in x ? x.text : ""));
+		expect(paras[0]).toMatch(/not feeling like a woman, the plain honesty/);
+		expect(paras[1]).toMatch(/^1\. More information/);
+	});
+
+	it("does not mistake a numbered heading low on the page for a footnote", () => {
+		const p = page(
+			1,
+			[line("self-attention and discuss its advantages over models such as these.", 600)],
+			[line("3 Model Architecture", 630, { size: 13, bold: true, y1: 644 })],
+			[line("Most competitive neural sequence transduction models have an encoder.", 660)],
+		);
+		expect(toParagraphs([p], 11).map((x) => x.kind)).toEqual(["p", "h3", "p"]);
 	});
 });

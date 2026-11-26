@@ -81,7 +81,10 @@ p, li, blockquote, dd { line-height: inherit !important; }
 a { text-decoration-thickness: 1px; text-underline-offset: 2px; }
 img, svg, video {
 	max-width: 100% !important;
-	max-height: ${pageH}px !important;
+	/* Leave room for figure margins and a caption line: an image capped at the
+	   full page height plus its margins doesn't fit any page, which leaves a
+	   blank page before it. */
+	max-height: calc(${pageH}px - 4em) !important;
 	height: auto;
 	object-fit: contain;
 	${s.dimImages ? "filter: brightness(0.9);" : ""}

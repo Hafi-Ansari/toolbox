@@ -6,6 +6,8 @@ import { EpubBuilder, type NavEntry } from "./epub.ts";
 import type { StreamHandle } from "./fileStream.ts";
 import {
 	bodyFontSize,
+	type ImageBlock,
+	isJunkText,
 	type OutlineEntry,
 	type PageModel,
 	renderParas,
@@ -187,6 +189,8 @@ function flattenOutline(items: OutlineItem[], level = 1, out: OutlineEntry[] = [
 
 interface ImageSink {
 	add(image: mupdf.Image, width: number, height: number): { href: string; width: number; height: number } | null;
+	/** Stores an already-encoded JPEG (a rendered page). */
+	addJpeg(data: Uint8Array, width: number, height: number): { href: string; width: number; height: number };
 }
 
 /** Encodes images once each (identical images, like a repeated logo, are stored once). */
@@ -224,12 +228,57 @@ function imageSink(book: EpubBuilder, quality: number): ImageSink {
 				pix?.destroy();
 			}
 		},
+		addJpeg(data, width, height) {
+			const href = `images/img${++n}.jpg`;
+			book.addImage(href, "image/jpeg", data);
+			return { href, width, height };
+		},
 	};
 }
 
-function extractPage(page: mupdf.Page, index: number, images: ImageSink): PageModel {
-	const [bx0, by0, bx1, by1] = page.getBounds();
+/** Share of the page an image covers. Scanned pages are one page-sized image (or a few stacked layers). */
+function coverage(bbox: number[], bounds: number[]): number {
+	const w = Math.min(bbox[2], bounds[2]) - Math.max(bbox[0], bounds[0]);
+	const h = Math.min(bbox[3], bounds[3]) - Math.max(bbox[1], bounds[1]);
+	const area = (bounds[2] - bounds[0]) * (bounds[3] - bounds[1]);
+	return w > 0 && h > 0 && area > 0 ? (w * h) / area : 0;
+}
+
+/** True when a page has almost no ink: a blank leaf of a scanned book, show-through and all. */
+function isBlankPage(page: mupdf.Page): boolean {
+	const pix = page.toPixmap(mupdf.Matrix.scale(0.25, 0.25), mupdf.ColorSpace.DeviceGray, false, true);
+	try {
+		const px = pix.getPixels();
+		let sum = 0;
+		for (const v of px) sum += v;
+		const paper = sum / px.length;
+		let ink = 0;
+		for (const v of px) if (v < paper - 60) ink++;
+		return ink / px.length < 0.0005;
+	} finally {
+		pix.destroy();
+	}
+}
+
+/** Renders a whole page as one JPEG, compositing a scan's image layers. */
+function renderPage(page: mupdf.Page, images: ImageSink, quality: number): ImageBlock {
+	const scale = 150 / 72;
+	const pix = page.toPixmap(mupdf.Matrix.scale(scale, scale), mupdf.ColorSpace.DeviceRGB, false, true);
+	try {
+		const img = images.addJpeg(pix.asJPEG(quality).slice(), pix.getWidth(), pix.getHeight());
+		return { kind: "image", ...img };
+	} finally {
+		pix.destroy();
+	}
+}
+
+function extractPage(page: mupdf.Page, index: number, images: ImageSink, quality: number): PageModel {
+	const bounds = page.getBounds();
+	const [bx0, by0, bx1, by1] = bounds;
 	const model: PageModel = { index, width: bx1 - bx0, height: by1 - by0, blocks: [] };
+	// Page-covering images are not encoded as they come: on a scanned page they
+	// are the scan itself, and the text layer above them is what reflows.
+	let scanned = false;
 	// No "paragraph-break"/"segment": those wrap content in structure blocks that walk() skips.
 	// Paragraphs are rebuilt by the heuristics instead.
 	const st = page.toStructuredText("preserve-images,preserve-whitespace,dehyphenate");
@@ -243,7 +292,11 @@ function extractPage(page: mupdf.Page, index: number, images: ImageSink): PageMo
 	} | null = null;
 	let lines: PageModel["blocks"][number] | null = null;
 	st.walk({
-		onImageBlock(_bbox, _transform, image) {
+		onImageBlock(bbox, _transform, image) {
+			if (coverage(bbox, bounds) >= 0.85) {
+				scanned = true;
+				return;
+			}
 			const img = images.add(image, 0, 0);
 			if (img) model.blocks.push({ kind: "image", ...img });
 		},
@@ -292,6 +345,25 @@ function extractPage(page: mupdf.Page, index: number, images: ImageSink): PageMo
 		},
 	});
 	st.destroy();
+
+	if (scanned) {
+		const text = model.blocks
+			.flatMap((b) => (b.kind === "text" ? b.lines.map((l) => l.text) : []))
+			.join(" ")
+			.trim();
+		if (index === 0) {
+			// A first page drawn over a full-page picture is a cover: keep it as a picture.
+			model.blocks = [renderPage(page, images, quality)];
+		} else if (!text) {
+			// An image-only page (a plate, a photo, a blank leaf): one composite picture, unless blank.
+			if (!isBlankPage(page)) model.blocks.push(renderPage(page, images, quality));
+		} else if (isJunkText(text)) {
+			// OCR noise from show-through on an otherwise blank leaf.
+			model.blocks = model.blocks.filter((b) => b.kind !== "text");
+		} else {
+			model.ocr = true;
+		}
+	}
 	return model;
 }
 
@@ -335,7 +407,7 @@ export function pdfToEpub(
 			const pages: PageModel[] = [];
 			for (let i = 0; i < total; i++) {
 				const page = doc.loadPage(i);
-				pages.push(extractPage(page, i, images));
+				pages.push(extractPage(page, i, images, quality));
 				page.destroy();
 				progress(i + 1, total, "Reading text");
 			}
