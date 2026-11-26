@@ -33,6 +33,7 @@ Small, fast tools that run entirely in the browser. No uploads, no accounts, no 
 - **Works from bookmarks or layout.** Each poem or chapter starts at a bookmark when the PDF's outline marks works; otherwise at titles recognized from the book's own typography. Page numbers and running heads are removed; front and back matter is left out unless asked for.
 - **Every line knows its page.** The text sits beside the rendered page; the caret, the works menu and the review list all show the source line on the page. Review flags point at what needs a human: scanned pages without text, uncertain titles, likely OCR misreadings, lines that may be wrapped verse.
 - **Poetry or prose is guessed** from the book's shape: prose lines fill their column, verse lines mostly stop short.
+- **Manual overrides belong to the source.** Verse quoted in prose can be marked "Keep printed lines", a prose passage in poetry "Reflow as prose", and a possibly wrapped verse line joined from the Review list. Each is keyed to its page and position, not to TXT line numbers, so it survives re-conversion and mode switches; it is kept per file in the browser and can be undone from "Your changes".
 - `node scripts/pdf-txt.ts <file.pdf> poetry|prose` runs the same conversion from the command line.
 
 ## How the reader stays light and safe

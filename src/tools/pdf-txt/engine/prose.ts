@@ -1,6 +1,7 @@
 // Prose: rebuild paragraphs with the shared toParagraphs (which joins printed
 // wraps and paragraphs that run across pages), then put one sentence per line.
 import { type Block, type PageModel, toParagraphs } from "../../../lib/pdf/heuristics.ts";
+import { sourceFinder } from "./source.ts";
 import type { Box, TxtLine } from "./types.ts";
 
 /** A piece of a work on one page: everything between `fromY` and `toY`, minus the title. */
@@ -79,14 +80,16 @@ export function proseLines(slices: Slice[], body: number, opts: { lang?: string;
 	// page's first unindented line ("…the road home, like" / "Boston.").
 	const models = slices.map(cut).map((m) => (opts.merge ? { ...m, ocr: true } : m));
 	const out: TxtLine[] = [];
+	// Where each sentence was printed (its first line), for the preview and for manual overrides.
+	const locate = sourceFinder(models);
 	for (const para of toParagraphs(models, body)) {
 		if (para.kind === "img") continue;
 		if (out.length) out.push({ text: "", page: para.page });
 		if (para.kind !== "p") {
-			out.push({ text: para.text.trim(), page: para.page });
+			out.push({ text: para.text.trim(), page: para.page, ...locate(para.text) });
 			continue;
 		}
-		for (const s of sentences(para.text, opts.lang)) out.push({ text: s, page: para.page });
+		for (const s of sentences(para.text, opts.lang)) out.push({ text: s, page: para.page, ...locate(s) });
 	}
 	return out;
 }

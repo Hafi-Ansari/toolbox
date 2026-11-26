@@ -374,3 +374,64 @@
 		grid-column: 1 / -1;
 	}
 }
+
+/* ---------- Manual overrides */
+
+.barButton {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--s-1);
+	flex: none;
+	height: 32px;
+	padding: 0 var(--s-3);
+	border: 1px solid var(--border-strong);
+	border-radius: var(--radius-sm);
+	background: transparent;
+	color: var(--text);
+	font: inherit;
+	font-size: var(--fs-sm);
+	font-weight: 600;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.barButton:hover:not(:disabled) {
+	background: var(--surface);
+	border-color: var(--text-muted);
+}
+
+.barButton:disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+
+.barButton:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+}
+
+/* A list row with an action beside it: the row opens the spot, the button acts on it. */
+.override {
+	display: flex;
+	align-items: center;
+	gap: var(--s-2);
+}
+
+.override > .flag {
+	flex: 1;
+	min-width: 0;
+}
+
+.overrideKind {
+	color: var(--accent);
+}
+
+@media (max-width: 560px) {
+	.override {
+		align-items: flex-start;
+	}
+
+	.override > .barButton {
+		margin-top: var(--s-1);
+	}
+}

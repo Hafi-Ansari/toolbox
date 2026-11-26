@@ -3,7 +3,7 @@
 // are joined only on strong evidence of a layout wrap: the first runs to the
 // right margin and the second is an indented, lowercase continuation.
 import type { BookStats, Row } from "./layout.ts";
-import type { Flag, TxtLine } from "./types.ts";
+import type { Flag, SourcePos, TxtLine } from "./types.ts";
 
 export interface PoetryContext {
 	stats: BookStats;
@@ -13,6 +13,8 @@ export interface PoetryContext {
 	work: number;
 	/** Pages whose text is an OCR layer: only there are odd symbols a sign of misreading. */
 	ocrPages: Set<number>;
+	/** Manual joins: the printed line at each spot is joined to the line above it. */
+	joins?: SourcePos[];
 }
 
 /** A gap this many times the leading or more is a stanza break. */
@@ -30,6 +32,9 @@ export function ocrNoise(text: string): boolean {
 }
 
 const boxOf = (r: Row) => ({ x0: r.x0, y0: r.y0, x1: r.x1, y1: r.y1 });
+const spanOf = (r: Row) => ({ from: { page: r.page, y: r.y0 }, to: { page: r.page, y: r.y1 } });
+const joinedAt = (r: Row, joins: SourcePos[] | undefined) =>
+	!!joins?.some((j) => j.page === r.page && j.y >= r.y0 && j.y <= r.y1);
 
 const reaches = (r: Row, stats: BookStats) => r.x1 >= stats.right - stats.size * 1.2;
 
@@ -107,15 +112,19 @@ export function poetryLines(rows: Row[], ctx: PoetryContext): TxtLine[] {
 			if (prev.page === r.page) brk = r.y1 - prev.y1 > stats.leading * STANZA_GAP;
 			// Across a page turn: if one more line would have fitted, the stanza ended there.
 			else brk = prev.y1 + stats.leading <= ctx.bottom - stats.leading * 0.2;
-			if (!brk && isWrap(prev, r, stats, indents)) {
+			const manual = joinedAt(r, ctx.joins);
+			if (manual || (!brk && isWrap(prev, r, stats, indents))) {
 				const last = out[out.length - 1];
 				last.text = `${last.text} ${text.trim()}`;
 				if (last.box) last.box = { ...last.box, x1: Math.max(last.box.x1, r.x1), y1: r.y1 };
+				if (last.span) last.span = { ...last.span, to: { page: r.page, y: r.y1 } };
 				flags.push({
 					kind: "wrap-joined",
 					page: r.page,
 					work,
-					reason: `Joined an indented runover to the line above: "${last.text}".`,
+					reason: manual
+						? `Joined to the line above, as you asked: "${last.text}".`
+						: `Joined an indented runover to the line above: "${last.text}".`,
 					text: last.text,
 					box: boxOf(r),
 				});
@@ -143,7 +152,13 @@ export function poetryLines(rows: Row[], ctx: PoetryContext): TxtLine[] {
 				box: boxOf(r),
 			});
 		const indent = level((r.x0 - (lefts.get(r.page) ?? r.x0)) / stats.size);
-		out.push({ text: text.trim(), page: r.page, box: boxOf(r), indent: indent >= 1 ? Math.round(indent * 2) / 2 : 0 });
+		out.push({
+			text: text.trim(),
+			page: r.page,
+			box: boxOf(r),
+			indent: indent >= 1 ? Math.round(indent * 2) / 2 : 0,
+			span: spanOf(r),
+		});
 		prev = r;
 	}
 	return out;

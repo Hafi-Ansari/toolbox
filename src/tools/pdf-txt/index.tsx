@@ -6,7 +6,21 @@ import { Icon } from "../../lib/Icon.tsx";
 import { openSaveTarget } from "../../lib/saveFile.ts";
 import { Button, Card, Chip, FileDrop, Note, Pills, Progress } from "../../lib/ui.tsx";
 import { startWorker, type WorkerHandle } from "../../lib/worker.ts";
-import { type Box, type Flag, type Mode, type OutLine, type TxtResult, txtLines } from "./engine/index.ts";
+import {
+	type Box,
+	type Flag,
+	type Mode,
+	type OutLine,
+	type Override,
+	PASSAGE_KIND,
+	type Selected,
+	selectionSpan,
+	type TxtResult,
+	txtLines,
+} from "./engine/index.ts";
+import { selectedLines } from "./engine/select.ts";
+import { before as earlier } from "./engine/source.ts";
+import { findOverride, loadOverrides, OverrideList, saveOverrides } from "./Overrides.tsx";
 import s from "./PdfTxt.module.css";
 import type { LoadedBook, TxtApi } from "./txt.worker.ts";
 
@@ -41,7 +55,7 @@ function saveOptions(o: Options) {
 type State =
 	| { kind: "idle" }
 	| { kind: "reading"; file: File; done: number; total: number; started: number }
-	| { kind: "ready"; file: File; book: LoadedBook; mode: Mode; result: TxtResult; ms: number }
+	| { kind: "ready"; file: File; book: LoadedBook; mode: Mode; result: TxtResult; ms: number; overrides: Override[] }
 	| { kind: "error"; file?: File; message: string };
 
 const createWorker = () =>
@@ -110,9 +124,10 @@ export default function PdfTxtTool() {
 				setState((st) => (st.kind === "reading" ? { ...st, done, total } : st));
 			});
 			const book = await api.load(file, onProgress);
-			const result = await api.convert(book.mode);
+			const overrides = loadOverrides(file);
+			const result = await api.convert(book.mode, overrides);
 			if (id !== run.current) return;
-			setState({ kind: "ready", file, book, mode: book.mode, result, ms: performance.now() - started });
+			setState({ kind: "ready", file, book, mode: book.mode, result, ms: performance.now() - started, overrides });
 		} catch (e) {
 			if (id !== run.current) return;
 			const notPdf = e instanceof Error && e.message === "NOT_PDF";
@@ -121,14 +136,17 @@ export default function PdfTxtTool() {
 		}
 	}
 
-	async function changeMode(mode: Mode) {
+	/** Re-converts in `mode`, with new overrides when given (saved for the file). */
+	async function changeMode(mode: Mode, overrides?: Override[]) {
 		if (state.kind !== "ready") return;
 		const id = ++run.current;
+		const next = overrides ?? state.overrides;
 		try {
 			const api = await (worker.current ?? spawn()).api;
-			const result = await api.convert(mode);
+			const result = await api.convert(mode, next);
 			if (id !== run.current) return;
-			setState((st) => (st.kind === "ready" ? { ...st, mode, result } : st));
+			if (overrides) saveOverrides(state.file, overrides);
+			setState((st) => (st.kind === "ready" ? { ...st, mode, result, overrides: next } : st));
 		} catch (e) {
 			if (id === run.current) setState({ kind: "error", file: state.file, message: message(e) });
 		}
@@ -247,10 +265,10 @@ function Review({
 }: {
 	state: Extract<State, { kind: "ready" }>;
 	worker: React.RefObject<WorkerHandle<TxtApi> | null>;
-	onMode: (mode: Mode) => Promise<void>;
+	onMode: (mode: Mode, overrides?: Override[]) => Promise<void>;
 	onReset: () => void;
 }) {
-	const { file, book, result, mode } = state;
+	const { file, book, result, mode, overrides } = state;
 	const [options, setOptions] = useState<Options>(loadOptions);
 	const lines = useMemo(
 		() => txtLines(result, { indent: options.indent, matter: options.matter }),
@@ -264,6 +282,10 @@ function Review({
 	const [saved, setSaved] = useState<string | null>(null);
 	const area = useRef<HTMLTextAreaElement>(null);
 	const panes = useRef<HTMLDivElement>(null);
+	/** The printed passage behind the caret or selection, for "Keep printed lines" / "Reflow as prose". */
+	const [selected, setSelected] = useState<Selected | null>(null);
+	/** An override to show once the text is rebuilt after adding or undoing it. */
+	const pending = useRef<Override | null>(null);
 
 	// A new conversion (mode or options changed) replaces the text.
 	useEffect(() => {
@@ -304,14 +326,16 @@ function Review({
 		if (!el) return;
 		let line = 0;
 		for (let i = el.value.indexOf("\n"); i >= 0 && i < el.selectionStart; i = el.value.indexOf("\n", i + 1)) line++;
+		const sel = selectedLines(el.value, el.selectionStart, el.selectionEnd);
+		setSelected(selectionSpan(lines, sel.first, sel.last, sel.caret));
 		const src = lines[line];
 		if (!src) return;
 		setPage(src.page);
 		setMark(src.box ? { box: src.box, page: src.page, tone: "line" } : null);
 	};
 
-	/** Selects output line `index` in the text and scrolls it into view. */
-	const selectLine = (index: number) => {
+	/** Selects output lines `index` to `last` in the text and scrolls them into view. */
+	const selectLine = (index: number, last = index) => {
 		const el = area.current;
 		if (!el || index < 0) return;
 		let start = 0;
@@ -320,7 +344,8 @@ function Review({
 			if (next < 0) break;
 			start = next + 1;
 		}
-		const end = el.value.indexOf("\n", start);
+		let end = el.value.indexOf("\n", start);
+		for (let i = index; i < last && end >= 0; i++) end = el.value.indexOf("\n", end + 1);
 		// Focus first: an unfocused textarea doesn't keep (or show) its selection.
 		el.focus({ preventScroll: true });
 		el.setSelectionRange(start, end < 0 ? el.value.length : end);
@@ -334,6 +359,70 @@ function Review({
 		setPage(f.page);
 		setMark(f.box ? { box: f.box, page: f.page, tone: "flag" } : null);
 		selectLine(lineFor(lines, f));
+	};
+
+	/** Shows where an override sits: its lines selected, its passage marked on the page. */
+	const showOverride = (o: Override) => {
+		const at = findOverride(lines, o);
+		const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+		panes.current?.scrollIntoView({ block: "start", behavior: reduced ? "auto" : "smooth" });
+		setPage(at.page);
+		setMark(at.box ? { box: at.box, page: at.page, tone: "line" } : null);
+		selectLine(at.first, at.last);
+	};
+
+	// After a re-conversion for an override, show the passage it changed.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: runs once the rebuilt text is in place
+	useEffect(() => {
+		const o = pending.current;
+		if (!o || text !== generated) return;
+		pending.current = null;
+		showOverride(o);
+	}, [text, generated, lines]);
+
+	const changeOverrides = (next: Override[], show: Override) => {
+		if (!discardEdits()) return;
+		pending.current = show;
+		setSelected(null);
+		void onMode(mode, next);
+	};
+
+	/** The passage override of this mode that already covers the selection, if any: the button then undoes it. */
+	const covering = selected
+		? overrides.find(
+				(o) =>
+					o.kind === PASSAGE_KIND[mode] &&
+					!earlier(selected.span.from, o.span.from) &&
+					!earlier(o.span.to, selected.span.to),
+			)
+		: undefined;
+
+	const togglePassage = () => {
+		if (covering)
+			return changeOverrides(
+				overrides.filter((o) => o !== covering),
+				covering,
+			);
+		if (!selected) return;
+		// A new passage absorbs the ones it overlaps.
+		const kind = PASSAGE_KIND[mode];
+		let span = selected.span;
+		const rest = overrides.filter((o) => {
+			if (o.kind !== kind || earlier(o.span.to, span.from) || earlier(span.to, o.span.from)) return true;
+			span = {
+				from: earlier(o.span.from, span.from) ? o.span.from : span.from,
+				to: earlier(span.to, o.span.to) ? o.span.to : span.to,
+			};
+			return false;
+		});
+		const added: Override = { kind, span, text: selected.text };
+		changeOverrides([...rest, added], added);
+	};
+
+	const joinFlag = (f: Flag) => {
+		if (!f.box) return;
+		const added: Override = { kind: "join", at: { page: f.page, y: (f.box.y0 + f.box.y1) / 2 }, text: f.text };
+		changeOverrides([...overrides, added], added);
 	};
 
 	const showWork = (index: number) => {
@@ -430,6 +519,27 @@ function Review({
 					<div className={s.paneBar}>
 						<span className={s.paneTitle}>Text{edited && <span className={s.edited}> · edited</span>}</span>
 						<span className={s.paneMeta}>{size.lines ? `${size.lines} lines` : ""}</span>
+						<button
+							type="button"
+							className={s.barButton}
+							disabled={!selected}
+							onClick={togglePassage}
+							title={
+								covering
+									? "Undo this change: convert the passage like the rest of the book"
+									: mode === "prose"
+										? "Keep the selected passage (or the paragraph at the caret) line by line, as printed: for verse quoted in prose"
+										: "Reflow the selected passage (or the stanza at the caret) into sentences: for a prose poem or a note"
+							}
+						>
+							{covering
+								? mode === "prose"
+									? "Undo kept lines"
+									: "Undo reflow"
+								: mode === "prose"
+									? "Keep printed lines"
+									: "Reflow as prose"}
+						</button>
 						{edited && (
 							<Button
 								variant="ghost"
@@ -510,6 +620,18 @@ function Review({
 				</section>
 			</div>
 
+			<OverrideList
+				overrides={overrides}
+				mode={mode}
+				onShow={showOverride}
+				onUndo={(o) =>
+					changeOverrides(
+						overrides.filter((x) => x !== o),
+						o,
+					)
+				}
+			/>
+
 			<details className={s.flags} open={reviewCount > 0 && reviewCount <= 40}>
 				<summary>
 					Review{" "}
@@ -521,12 +643,22 @@ function Review({
 					<ul>
 						{flags.map((f, i) => (
 							// biome-ignore lint/suspicious/noArrayIndexKey: flags are a fixed list per conversion; two can share kind and page
-							<li key={`${f.kind}:${f.page}:${i}`}>
+							<li key={`${f.kind}:${f.page}:${i}`} className={f.kind === "possible-wrap" ? s.override : undefined}>
 								<button type="button" onClick={() => showFlag(f)} className={s.flag}>
 									<span className={REVIEW_FIRST.includes(f.kind) ? s.flagKind : s.flagNote}>{FLAG_LABELS[f.kind]}</span>
 									<span className={s.flagPage}>p. {f.page + 1}</span>
 									<span className={s.flagReason}>{f.reason}</span>
 								</button>
+								{f.kind === "possible-wrap" && f.box && (
+									<button
+										type="button"
+										className={s.barButton}
+										onClick={() => joinFlag(f)}
+										title="Join this line to the line above: one long verse line wrapped by the layout"
+									>
+										Join
+									</button>
+								)}
 							</li>
 						))}
 					</ul>
