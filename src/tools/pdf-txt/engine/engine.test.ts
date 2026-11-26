@@ -5,6 +5,7 @@ import { convert, sentences, summarize, toTxt, txtLines } from "./index.ts";
 import { toRows } from "./layout.ts";
 import { compareToReference, parseReference } from "./measure.ts";
 import { indentLevels } from "./poetry.ts";
+import { joinStackedTitles, type Start } from "./works.ts";
 
 const W = 360;
 const H = 520;
@@ -313,5 +314,67 @@ describe("guessMode", () => {
 
 	it("defaults to poetry when there is too little text to tell", () => {
 		expect(guessMode([page(0, [line("Title", 30)])])).toBe("poetry");
+	});
+});
+
+describe("front and back matter in a book without bookmarks", () => {
+	const body = (n: number, y = 70) =>
+		Array.from({ length: n }, (_, i) =>
+			line(`Prose words fill this printed line from the left edge across to the right ${i}`, y + i * LEAD),
+		);
+	const big = (text: string, y = 30) => line(text, y, { size: 16, y1: y + 18 });
+	/** Title page, copyright, contents, an introduction with its own notes, chapters, acknowledgments. */
+	function anthology(): PageModel[] {
+		const pages: PageModel[] = [
+			page(0, [big("A MADE-UP ANTHOLOGY", 120), big("Edited by Nobody", 160)]),
+			page(1, [line("Copyright © 2001 Example Press. All rights reserved.", 300)]),
+			page(2, [title("Contents"), ...body(4)]),
+			page(3, [title("Introduction"), ...body(20)]),
+			page(4, [title("Notes"), ...body(6)]),
+		];
+		const numbers = ["ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN", "EIGHT", "NINE", "TEN", "ELEVEN", "TWELVE"];
+		for (const [i, n] of numbers.entries())
+			pages.push(page(pages.length, [title(`CHAPTER ${n}`), title(`Story Number ${i + 1}`, 46), ...body(20, 80)]));
+		pages.push(page(pages.length, [title("Acknowledgments"), ...body(5)]));
+		pages.push(page(pages.length, [title("Contributors"), ...body(8)]));
+		return pages;
+	}
+
+	it("keeps the chapters as works and leaves out matter at both ends", () => {
+		const result = convert(anthology(), [], { mode: "prose" });
+		const works = result.works.filter((w) => w.kind === "work").map((w) => w.title);
+		expect(works).toContain("Introduction");
+		expect(works).toContain("CHAPTER ONE Story Number 1");
+		expect(works).toContain("CHAPTER TWELVE Story Number 12");
+		expect(works).toHaveLength(13);
+		expect(works).not.toContain("A MADE-UP ANTHOLOGY");
+		const matter = result.works.filter((w) => w.kind === "matter").map((w) => w.title);
+		expect(matter).toEqual(expect.arrayContaining(["Contents", "Notes", "Acknowledgments", "Contributors"]));
+		expect(toTxt(result)).not.toMatch(/Copyright|Contributors/);
+	});
+});
+
+describe("stacked headings", () => {
+	const start = (title: string, row: number, extra: Partial<Start> = {}): Start => ({
+		kind: "work",
+		title,
+		page: 4,
+		row,
+		titleRows: 1,
+		source: "layout",
+		confidence: 0.9,
+		...extra,
+	});
+
+	it("joins a label, a title and a byline set one under another", () => {
+		const joined = joinStackedTitles([start("CHAPTER TWO", 0), start("Deconstructing", 1), start("A. WRITER", 2)]);
+		expect(joined).toHaveLength(1);
+		expect(joined[0]).toMatchObject({ title: "CHAPTER TWO: Deconstructing — A. WRITER", row: 0, titleRows: 3 });
+	});
+
+	it("leaves works with a body between them, sections and other pages alone", () => {
+		expect(joinStackedTitles([start("One", 0), start("Two", 5)])).toHaveLength(2);
+		expect(joinStackedTitles([start("I", 0, { kind: "section" }), start("Poem", 1)])).toHaveLength(2);
+		expect(joinStackedTitles([start("One", 0), start("Two", 0, { page: 5 })])).toHaveLength(2);
 	});
 });
