@@ -2,9 +2,11 @@
 //   out/sample.epub, out/sample.pdf, out/sample.fixed.epub  (via scripts/spike.ts)
 //   out/hostile.epub  (scripts, handlers, remote resources — must all be inert in the reader)
 //   out/stubborn.epub (publisher colors pinned with !important, as many web-downloaded books do)
+//   out/poems.pdf     (a made-up poetry book, for PDF → TXT)
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import { EpubBuilder } from "../src/tools/epub-pdf/engine/epub.ts";
+import { poemsPdf } from "./poems.ts";
 
 function hostileEpub(file: string) {
 	const parts: Uint8Array[] = [];
@@ -52,4 +54,5 @@ export default function setup() {
 	}
 	hostileEpub("out/hostile.epub");
 	stubbornEpub("out/stubborn.epub");
+	poemsPdf("out/poems.pdf");
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Line, OutlineEntry, PageModel } from "../../../lib/pdf/heuristics.ts";
-import { convert, sentences, summarize, toTxt } from "./index.ts";
+import { guessMode } from "./guess.ts";
+import { convert, sentences, summarize, toTxt, txtLines } from "./index.ts";
 import { toRows } from "./layout.ts";
 import { compareToReference, parseReference } from "./measure.ts";
 import { indentLevels } from "./poetry.ts";
@@ -276,5 +277,41 @@ describe("measure", () => {
 		expect(m.titlesFound).toBe(2);
 		expect(m.titlesExact).toBe(2);
 		expect(m.bodyMatched).toBe(2);
+	});
+});
+
+describe("txtLines", () => {
+	it("is toTxt line by line, with each line's source page and work", () => {
+		const result = convert(book(), [], { mode: "poetry" });
+		const lines = txtLines(result);
+		expect(`${lines.map((l) => l.text).join("\n")}\n`).toBe(toTxt(result));
+		const gamma = lines.find((l) => l.text.startsWith("gamma more"));
+		expect(gamma?.page).toBe(2);
+		expect(result.works[gamma?.work ?? -1].title).toBe("Second Poem");
+		expect(lines.find((l) => l.text === "Third Poem")?.box).toBeDefined();
+	});
+});
+
+describe("guessMode", () => {
+	/** A page of lines starting at x0 40, reaching x1 from `ends`. */
+	const shaped = (ends: number[]) =>
+		page(
+			0,
+			ends.map((x1, i) => line("words ".repeat(8), 40 + i * LEAD, { x1 })),
+		);
+
+	it("reads ragged lines as poetry and full lines as prose", () => {
+		expect(guessMode([shaped([180, 250, 140, 300, 210, 160, 230, 320, 190, 150])])).toBe("poetry");
+		expect(guessMode([shaped([320, 319, 320, 318, 320, 200, 320, 320, 319, 320])])).toBe("prose");
+	});
+
+	it("measures each column against its own edge", () => {
+		const col = (x0: number, x1: number) =>
+			Array.from({ length: 8 }, (_, i) => line("words ".repeat(5), 40 + i * LEAD, { x0, x1 }));
+		expect(guessMode([page(0, [...col(30, 170), ...col(190, 330)])])).toBe("prose");
+	});
+
+	it("defaults to poetry when there is too little text to tell", () => {
+		expect(guessMode([page(0, [line("Title", 30)])])).toBe("poetry");
 	});
 });

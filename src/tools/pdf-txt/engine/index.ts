@@ -8,7 +8,7 @@ import type { OutlineEntry, PageModel } from "../../../lib/pdf/heuristics.ts";
 import { bookStats, type PageRows, percentile, preparePages, type Row } from "./layout.ts";
 import { poetryLines } from "./poetry.ts";
 import { fragmentedBook, proseLines, type Slice } from "./prose.ts";
-import type { ConvertOptions, ExportOptions, Flag, TxtLine, TxtResult, Work } from "./types.ts";
+import type { Box, ConvertOptions, ExportOptions, Flag, TxtLine, TxtResult, Work } from "./types.ts";
 import { chooseStarts, type Start } from "./works.ts";
 
 export { sentences } from "./prose.ts";
@@ -146,17 +146,44 @@ export function convert(models: PageModel[], outline: OutlineEntry[], opts: Conv
  * empty lines. LF line endings; the caller encodes as UTF-8.
  */
 export function toTxt(result: TxtResult, opts: ExportOptions = {}): string {
-	const parts: string[] = [];
-	for (const w of result.works) {
-		if (w.kind === "matter" && !opts.matter) continue;
-		if (w.kind === "section" && opts.sections === false) continue;
+	const lines = txtLines(result, opts);
+	return lines.length ? `${lines.map((l) => l.text).join("\n")}\n` : "";
+}
+
+/** One line of the exported TXT and where it came from, so a preview can show its source. */
+export interface OutLine {
+	text: string;
+	/** Source page (0-based); blank lines carry the page of the line before them. */
+	page: number;
+	/** Index into `result.works`. */
+	work: number;
+	/** Where the printed line (or title) sits on the page, when known. */
+	box?: Box;
+}
+
+/** The lines toTxt() writes, each with its source. `toTxt` is these texts joined by LF. */
+export function txtLines(result: TxtResult, opts: ExportOptions = {}): OutLine[] {
+	const out: OutLine[] = [];
+	result.works.forEach((w, work) => {
+		if (w.kind === "matter" && !opts.matter) return;
+		if (w.kind === "section" && opts.sections === false) return;
 		const pad = (l: TxtLine) =>
 			opts.indent !== false && l.indent ? " ".repeat(Math.min(40, Math.round(l.indent * 2))) : "";
-		const body = w.lines.map((l) => pad(l) + l.text.trimEnd()).join("\n");
-		const text = [w.title, body].filter(Boolean).join("\n\n").replace(/\n+$/, "");
-		if (text.trim()) parts.push(text);
-	}
-	return parts.length ? `${parts.join("\n\n\n\n")}\n` : "";
+		const lines: OutLine[] = [];
+		let page = w.page;
+		if (w.title) lines.push({ text: w.title, page, work, box: w.titleBox });
+		if (w.title && w.lines.length) lines.push({ text: "", page, work });
+		for (const l of w.lines) {
+			if (l.text.trim()) page = l.page;
+			lines.push({ text: pad(l) + l.text.trimEnd(), page, work, box: l.box });
+		}
+		while (lines.length && !lines[lines.length - 1].text) lines.pop();
+		if (!lines.some((l) => l.text.trim())) return;
+		// Works are separated by three empty lines.
+		if (out.length) for (let i = 0; i < 3; i++) out.push({ text: "", page: w.page, work });
+		out.push(...lines);
+	});
+	return out;
 }
 
 /** Counts for a status line: works by kind, flags by kind, pages that need OCR. */

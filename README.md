@@ -6,6 +6,7 @@ Small, fast tools that run entirely in the browser. No uploads, no accounts, no 
 |---|---|---|
 | **EPUB ⇄ PDF** | `/epub-pdf` | Converts ebooks to PDF and PDFs to ebooks (reflowable text or fixed pages), powered by [MuPDF](https://mupdf.com) compiled to WebAssembly. |
 | **EPUB Reader** | `/read` | A light, dark-mode ebook reader: pages or scrolling, contents, typography settings, and a library of recent books kept on the device. |
+| **PDF → TXT** | `/pdf-txt` | Turns a book of poems or prose into plain text (one verse line or one sentence per line), shown beside the printed page so you can check and edit it before saving. |
 
 ## Stack
 
@@ -25,6 +26,14 @@ Small, fast tools that run entirely in the browser. No uploads, no accounts, no 
 - **EPUB output** is streamed. Chunks flow from the worker straight to disk through the File System Access API (Chromium). Other browsers collect a Blob and download it.
 - **PDF output** is built in WASM memory, which tops out at 2 GB. That is far beyond any real EPUB→PDF result.
 - Vercel only serves static files, so its 4.5 MB function body limit never applies.
+
+## How PDF → TXT works
+
+- **Read once, convert instantly.** The worker reads every page into positioned lines with the shared engine (`src/lib/pdf/`), then keeps them: switching between poetry and prose re-converts in milliseconds.
+- **Works from bookmarks or layout.** Each poem or chapter starts at a bookmark when the PDF's outline marks works; otherwise at titles recognized from the book's own typography. Page numbers and running heads are removed; front and back matter is left out unless asked for.
+- **Every line knows its page.** The text sits beside the rendered page; the caret, the works menu and the review list all show the source line on the page. Review flags point at what needs a human: scanned pages without text, uncertain titles, likely OCR misreadings, lines that may be wrapped verse.
+- **Poetry or prose is guessed** from the book's shape: prose lines fill their column, verse lines mostly stop short.
+- `node scripts/pdf-txt.ts <file.pdf> poetry|prose` runs the same conversion from the command line.
 
 ## How the reader stays light and safe
 
