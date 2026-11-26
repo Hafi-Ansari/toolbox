@@ -7,6 +7,7 @@ import { openSaveTarget } from "../../lib/saveFile.ts";
 import { Button, Card, Chip, FileDrop, Note, Pills, Progress } from "../../lib/ui.tsx";
 import { startWorker, type WorkerHandle } from "../../lib/worker.ts";
 import { type Box, type Flag, type Mode, type OutLine, type TxtResult, txtLines } from "./engine/index.ts";
+import { OcrPanel } from "./OcrPanel.tsx";
 import s from "./PdfTxt.module.css";
 import type { LoadedBook, TxtApi } from "./txt.worker.ts";
 
@@ -64,6 +65,10 @@ const FLAG_LABELS: Record<Flag["kind"], string> = {
 	"possible-wrap": "Possible wrapped line",
 	"ocr-noise": "Possible OCR misreading",
 	"ocr-fixed": "OCR correction",
+	"ocr-added": "Added by OCR",
+	"ocr-replaced": "Replaced by OCR",
+	"ocr-differs": "OCR reads differently",
+	"ocr-page": "Read by OCR",
 };
 
 /** Flags worth a reader's attention first; the rest are informational. */
@@ -73,6 +78,9 @@ const REVIEW_FIRST: Flag["kind"][] = [
 	"ocr-noise",
 	"furniture-kept",
 	"possible-wrap",
+	"ocr-added",
+	"ocr-replaced",
+	"ocr-differs",
 ];
 
 export default function PdfTxtTool() {
@@ -227,8 +235,8 @@ export default function PdfTxtTool() {
 					<li>
 						<Icon name="text" size={16} />
 						<span>
-							<strong>Scans with text.</strong> Scanned books work when they carry a text layer. Pages without one are
-							flagged.
+							<strong>Scans too.</strong> A scan's text layer is used as it is; OCR, run on this device, reads pages
+							without one and repairs garbled lines.
 						</span>
 					</li>
 				</ul>
@@ -409,14 +417,14 @@ function Review({
 			</div>
 
 			{counts.needsOcr === book.pages ? (
-				<Note tone="danger">
-					Every page of this PDF is a scan without a text layer, so there's no text to extract. Run it through OCR first
-					(many scanners and PDF apps can add a text layer), then open it here again.
+				<Note tone="info">
+					Every page of this PDF is a scan without a text layer, so its words exist only as images. Run OCR below to
+					read them.
 				</Note>
 			) : counts.needsOcr > 0 ? (
 				<Note tone="info">
 					{counts.needsOcr === 1 ? "1 page is a scan" : `${counts.needsOcr} pages are scans`} without a text layer.
-					Their words are missing from the text; they're listed under <strong>Review</strong>.
+					Their words are missing from the text until you run OCR; they're listed under <strong>Review</strong>.
 				</Note>
 			) : book.ocr > book.pages / 2 ? (
 				<Note tone="info">
@@ -424,6 +432,16 @@ function Review({
 					page, especially italics and spaced-out letters.
 				</Note>
 			) : null}
+
+			<OcrPanel
+				worker={worker}
+				page={page}
+				pages={book.pages}
+				result={result}
+				edited={edited}
+				confirmDiscard={discardEdits}
+				onConverted={() => onMode(mode)}
+			/>
 
 			<div ref={panes} className={s.review}>
 				<section className={s.textPane} aria-label="Text">

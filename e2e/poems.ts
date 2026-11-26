@@ -1,6 +1,8 @@
 // A small, made-up poetry book as a born-digital PDF: titles in bold above
 // stanzas, an indented line, page numbers at the foot, one poem running onto
 // a second page. Used by pdf-txt.spec.ts; written to out/poems.pdf.
+// scanPdf() makes a scan of one of its pages: a page that is only a picture of
+// the printed text, with no text layer (out/scan.pdf, for on-demand OCR).
 import fs from "node:fs";
 import * as mupdf from "mupdf";
 
@@ -29,7 +31,7 @@ function stanza(lines: string[], y: number, x = 48): Text[] {
 	return lines.map((line, i) => ({ text: line.trim(), x: line.startsWith("  ") ? x + 24 : x, y: y + i * 15 }));
 }
 
-export function poemsPdf(file: string) {
+function poemsDocument(): mupdf.PDFDocument {
 	const pdf = new mupdf.PDFDocument();
 	const fonts = {
 		R: pdf.addSimpleFont(new mupdf.Font("Times-Roman")),
@@ -61,5 +63,21 @@ export function poemsPdf(file: string) {
 		const page = pdf.addPage([0, 0, W, H], 0, { Font: fonts }, pageContent(items));
 		pdf.insertPage(-1, page);
 	}
+	return pdf;
+}
+
+export function poemsPdf(file: string) {
+	fs.writeFileSync(file, poemsDocument().saveToBuffer("compress").asUint8Array());
+}
+
+/** Page 2 of the poems ("Inventory") as a 200 dpi grey scan without a text layer. */
+export function scanPdf(file: string) {
+	const source = poemsDocument();
+	const scale = 200 / 72;
+	const pix = source.loadPage(1).toPixmap(mupdf.Matrix.scale(scale, scale), mupdf.ColorSpace.DeviceGray, false, true);
+	const pdf = new mupdf.PDFDocument();
+	const image = pdf.addImage(new mupdf.Image(pix));
+	const page = pdf.addPage([0, 0, W, H], 0, { XObject: { Scan: image } }, `q ${W} 0 0 ${H} 0 0 cm /Scan Do Q`);
+	pdf.insertPage(-1, page);
 	fs.writeFileSync(file, pdf.saveToBuffer("compress").asUint8Array());
 }

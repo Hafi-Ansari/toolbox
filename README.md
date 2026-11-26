@@ -6,7 +6,7 @@ Small, fast tools that run entirely in the browser. No uploads, no accounts, no 
 |---|---|---|
 | **EPUB ⇄ PDF** | `/epub-pdf` | Converts ebooks to PDF and PDFs to ebooks (reflowable text or fixed pages), powered by [MuPDF](https://mupdf.com) compiled to WebAssembly. |
 | **EPUB Reader** | `/read` | A light, dark-mode ebook reader: pages or scrolling, contents, typography settings, and a library of recent books kept on the device. |
-| **PDF → TXT** | `/pdf-txt` | Turns a book of poems or prose into plain text (one verse line or one sentence per line), shown beside the printed page so you can check and edit it before saving. |
+| **PDF → TXT** | `/pdf-txt` | Turns a book of poems or prose into plain text (one verse line or one sentence per line), shown beside the printed page so you can check and edit it before saving. Reads scanned pages with OCR on demand. |
 
 ## Stack
 
@@ -15,6 +15,7 @@ Small, fast tools that run entirely in the browser. No uploads, no accounts, no 
 | App | Vite + React + TypeScript | Static SPA; nothing needs a server |
 | Routing | wouter (~2 KB) | The tool registry does the real work |
 | Conversion | `mupdf` (WASM) in a Web Worker | One engine for both directions; UI never blocks |
+| OCR | `tesseract.js` (WASM) in its own Web Worker, English `best_int` model | Loaded only when OCR is asked for; every file is served from `/assets/`, no CDN |
 | Worker calls | Comlink | Function calls instead of postMessage plumbing |
 | Zip | own writer (`zip.ts`) and reader (`src/lib/zipReader.ts`) | Correct EPUB `mimetype` entry, ZIP64, random access; native `DecompressionStream` for reading |
 | Styling | CSS Modules + `tokens.css` | Zero runtime |
@@ -33,6 +34,8 @@ Small, fast tools that run entirely in the browser. No uploads, no accounts, no 
 - **Works from bookmarks or layout.** Each poem or chapter starts at a bookmark when the PDF's outline marks works; otherwise at titles recognized from the book's own typography. Page numbers and running heads are removed; front and back matter is left out unless asked for.
 - **Every line knows its page.** The text sits beside the rendered page; the caret, the works menu and the review list all show the source line on the page. Review flags point at what needs a human: scanned pages without text, uncertain titles, likely OCR misreadings, lines that may be wrapped verse.
 - **Poetry or prose is guessed** from the book's shape: prose lines fill their column, verse lines mostly stop short.
+- **OCR on demand.** For scanned pages (all of them, or one page at a time) tesseract.js reads the page rendered at 300 dpi, in its own worker, loaded on first use (about 4 MB, once; then cached). It runs with PSM 4: the default PSM 3 dropped a title and a whole row on a test page, and PSM 6 and 11 invent rows on blank pages. The results stay with the book, so switching modes keeps them.
+- **OCR fills gaps; it doesn't replace pages.** On a scan's existing text layer OCR is no better overall, and on born-digital pages it only adds errors, so `engine/ocr.ts` keeps every text-layer line, adds confident OCR lines the layer lacks, swaps a line only when the layer's reading is garbled beyond resemblance, and flags other material differences for review. A scan without a text layer takes OCR's text (confident lines only). The model and recognizer are self-hosted: `?url` imports make Vite emit them as hashed assets.
 - `node scripts/pdf-txt.ts <file.pdf> poetry|prose` runs the same conversion from the command line.
 
 ## How the reader stays light and safe
@@ -63,6 +66,7 @@ npx vite build              # production build → dist/
 npx playwright test         # headless end-to-end tests (uses installed Edge)
 node scripts/spike.ts [file] # convert a real file from the command line → out/
 node scripts/pdf-pages.ts <file.pdf> [22|20-24] [--json] # print the positioned lines the engine reads
+node scripts/pdf-txt-ocr.ts <file.pdf> poetry|prose [scans|22|20-24] [--flags] [--show 22] # PDF → TXT with OCR merged in
 ```
 
 ## Deploy
