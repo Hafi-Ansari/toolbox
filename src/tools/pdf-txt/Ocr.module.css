@@ -78,3 +78,28 @@
 		grid-template-columns: minmax(0, 1fr);
 	}
 }
+
+/* Wide screens: a slim strip, copy on the left and the actions on the right. */
+@media (min-width: 861px) {
+	.panel {
+		grid-template-columns: minmax(0, 1fr) auto;
+		align-items: center;
+		gap: var(--s-3) var(--s-5);
+		padding: var(--s-3) var(--s-4);
+		background: var(--surface-2);
+	}
+
+	.actions,
+	.running {
+		justify-content: flex-end;
+	}
+
+	.running {
+		min-width: min(520px, 45vw);
+	}
+
+	.summary,
+	.panel > :not(.head, .actions, .running) {
+		grid-column: 1 / -1;
+	}
+}
