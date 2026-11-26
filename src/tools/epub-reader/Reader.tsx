@@ -1,5 +1,15 @@
-import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	type CSSProperties,
+	type FocusEvent,
+	type PointerEvent,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { type Book, chapterTitle, flattenToc } from "./book.ts";
+import { watchTouches } from "./gestures.ts";
 import { RIcon } from "./icons.tsx";
 import { type Position, savePosition } from "./library.ts";
 import * as P from "./paginate.ts";
@@ -11,12 +21,29 @@ import { loadSettings, MEASURE_EM, type ReaderSettings, saveSettings, THEMES } f
 
 const PLACEHOLDER = "/*READER_CSS*/";
 
+/** How long the bars stay after the mouse last moved (desktop). */
+const HIDE_AFTER_MOUSE = 2600;
+/** How long the bars stay after a tap brings them up (touch). */
+const HIDE_AFTER_TAP = 4000;
+/** Taps within this fraction of the page width from either side turn the page. */
+const EDGE = 0.3;
+/** A click this soon after a touch came from that touch (already handled as a tap). */
+const TOUCH_CLICK_MS = 800;
+
 interface Target {
 	anchor?: P.Anchor | null;
 	fraction?: number;
 	fragment?: string;
 	end?: boolean;
 }
+
+const focusVisible = (el: EventTarget) => {
+	try {
+		return (el as Element).matches(":focus-visible");
+	} catch {
+		return true; // no :focus-visible support: treat every focus as keyboard focus
+	}
+};
 
 const cx = (...c: (string | false | undefined)[]) => c.filter(Boolean).join(" ");
 const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
@@ -49,6 +76,8 @@ export function Reader({
 	const [spine, setSpine] = useState(initial?.spine ?? 0);
 	const [view, setView] = useState({ page: 0, pages: 1, fraction: 0 });
 	const [bars, setBars] = useState(true);
+	const barsRef = useRef(bars);
+	barsRef.current = bars;
 	const [panel, setPanel] = useState<null | "toc" | "settings">(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
@@ -210,22 +239,46 @@ export function Reader({
 		key: (_e: KeyboardEvent) => {},
 		poke: () => {},
 		toggleBars: () => {},
+		tap: (_x: number) => {},
+		swipe: (_dir: 1 | -1) => {},
+		touchScrolled: () => {},
 		follow: (_a: Element) => {},
 		scrolled: () => {},
 		relayout: async () => {},
 	});
 
 	const attach = useCallback((doc: Document) => {
-		const h = handlers.current;
-		let swiped = false;
-		let touch: { x: number; y: number } | null = null;
+		const h = () => handlers.current;
 		let lastWheel = 0;
-		doc.addEventListener("keydown", (e) => h.key(e));
-		doc.addEventListener("mousemove", () => h.poke(), { passive: true });
+		// Touch is read as gestures (see gestures.ts). A tap also fires compatibility mouse
+		// events and a click; those are ignored here so the tap is handled only once.
+		let lastTouch = Number.NEGATIVE_INFINITY;
+		let lastScroll = Number.NEGATIVE_INFINITY;
+		let touching = false;
+		let pointer = "";
+		const fromTouch = () => pointer === "touch" || pointer === "pen" || performance.now() - lastTouch < TOUCH_CLICK_MS;
+		doc.addEventListener("keydown", (e) => h().key(e));
+		doc.addEventListener(
+			"pointerdown",
+			(e) => {
+				pointer = e.pointerType;
+			},
+			{ passive: true, capture: true },
+		);
+		doc.addEventListener(
+			"pointermove",
+			(e) => {
+				if (e.pointerType === "mouse") h().poke();
+			},
+			{ passive: true },
+		);
 		doc.addEventListener(
 			"scroll",
 			() => {
-				if (applied.current.mode === "scroll") h.scrolled();
+				if (applied.current.mode !== "scroll") return;
+				lastScroll = performance.now();
+				if (touching) h().touchScrolled();
+				h().scrolled();
 			},
 			{ passive: true },
 		);
@@ -237,48 +290,35 @@ export function Reader({
 				const now = performance.now();
 				if (now - lastWheel < 350 || Math.abs(e.deltaY) + Math.abs(e.deltaX) < 4) return;
 				lastWheel = now;
-				(e.deltaY || e.deltaX) > 0 ? h.next() : h.prev();
+				(e.deltaY || e.deltaX) > 0 ? h().next() : h().prev();
 			},
 			{ passive: false },
 		);
-		doc.addEventListener(
-			"touchstart",
-			(e) => {
-				touch = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-			},
-			{ passive: true },
-		);
-		doc.addEventListener(
-			"touchend",
-			(e) => {
-				if (!touch) return;
-				const dx = e.changedTouches[0].clientX - touch.x;
-				const dy = e.changedTouches[0].clientY - touch.y;
-				touch = null;
-				if (applied.current.mode === "paged" && Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-					swiped = true;
-					dx < 0 ? h.next() : h.prev();
-				}
-			},
-			{ passive: true },
-		);
+		const touched = (e: TouchEvent) => {
+			lastTouch = performance.now();
+			touching = e.touches.length > 0;
+		};
+		for (const type of ["touchstart", "touchend", "touchcancel"])
+			doc.addEventListener(type, touched as EventListener, { passive: true });
+		watchTouches(doc, {
+			tap: (x) => h().tap(x),
+			swipe: (dir) => h().swipe(dir),
+			lastScroll: () => lastScroll,
+		});
 		doc.addEventListener("click", (e) => {
 			const link = (e.target as Element | null)?.closest?.("a");
 			if (link) {
 				e.preventDefault(); // the sandboxed frame must never navigate itself
-				h.follow(link);
+				h().follow(link);
 				return;
 			}
-			if (swiped) {
-				swiped = false;
-				return;
-			}
+			if (fromTouch()) return;
 			if (!doc.getSelection()?.isCollapsed) return; // selecting text, not tapping
 			const w = doc.documentElement.clientWidth;
 			const x = e.clientX / w;
-			if (applied.current.mode === "paged" && x < 0.3) h.prev();
-			else if (applied.current.mode === "paged" && x > 0.7) h.next();
-			else h.toggleBars();
+			if (applied.current.mode === "paged" && x < EDGE) h().prev();
+			else if (applied.current.mode === "paged" && x > 1 - EDGE) h().next();
+			else h().toggleBars();
 		});
 	}, []);
 
@@ -475,15 +515,47 @@ export function Reader({
 
 	/* ---------- Bars */
 
+	// The bars hide after a while, but never out from under the reader: not while a panel is
+	// open, the mouse is over them, a finger is on them, or the keyboard focus is in them.
+	// When the last of those ends, the countdown starts again.
 	const hideTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-	const overBars = useRef(false);
+	const hideDelay = useRef(HIDE_AFTER_MOUSE);
+	const holds = useRef({ hover: false, press: false, focus: false });
+	const held = useCallback(() => {
+		const h = holds.current;
+		return !!panelRef.current || h.hover || h.press || h.focus;
+	}, []);
+	const arm = useCallback(
+		(ms = hideDelay.current) => {
+			hideDelay.current = ms;
+			clearTimeout(hideTimer.current);
+			hideTimer.current = setTimeout(() => {
+				if (!held()) setBars(false);
+			}, ms);
+		},
+		[held],
+	);
 	const poke = useCallback(() => {
 		setBars(true);
+		arm(HIDE_AFTER_MOUSE);
+	}, [arm]);
+	/** Hides the bars now (touch page turns and scrolling), unless something holds them. */
+	const hideNow = useCallback(() => {
+		if (held()) return;
 		clearTimeout(hideTimer.current);
-		hideTimer.current = setTimeout(() => {
-			if (!panelRef.current && !overBars.current) setBars(false);
-		}, 2600);
-	}, []);
+		setBars(false);
+	}, [held]);
+	const hold = useCallback(
+		(what: keyof typeof holds.current, on: boolean) => {
+			holds.current[what] = on;
+			if (on) {
+				clearTimeout(hideTimer.current);
+				setBars(true);
+			} else arm();
+		},
+		[arm],
+	);
+	useEffect(() => () => clearTimeout(hideTimer.current), []);
 
 	const onKey = useCallback(
 		(e: KeyboardEvent) => {
@@ -553,6 +625,28 @@ export function Reader({
 		key: onKey,
 		poke,
 		toggleBars: () => setBars((b) => !b),
+		tap: (x) => {
+			if (panelRef.current) return;
+			const turns = applied.current.mode === "paged" || book.spine[spineRef.current]?.fixed;
+			if (turns && (x < EDGE || x > 1 - EDGE)) {
+				// Like Books: the edges turn the page (and put the bars away), the middle toggles them.
+				x > 1 - EDGE !== book.rtl ? next() : prev();
+				hideNow();
+			} else if (barsRef.current) hideNow();
+			else {
+				setBars(true);
+				arm(HIDE_AFTER_TAP);
+			}
+		},
+		swipe: (dir) => {
+			if (panelRef.current) return;
+			if (applied.current.mode !== "paged" && !book.spine[spineRef.current]?.fixed) return;
+			dir > 0 !== book.rtl ? next() : prev();
+			hideNow();
+		},
+		touchScrolled: () => {
+			if (barsRef.current && !panelRef.current) hideNow();
+		},
 		follow: (a: Element) => {
 			const external = a.getAttribute("data-external");
 			if (external) {
@@ -573,6 +667,24 @@ export function Reader({
 	};
 
 	/* ---------- Effects */
+
+	// Closing a panel starts the bars' countdown again.
+	useEffect(() => {
+		if (!panel) arm();
+	}, [panel, arm]);
+
+	// Taps and swipes on the stage around the page (a fixed-layout page's letterbox, the wide
+	// margins on a tablet) count like ones on the page. The book frame is a separate document,
+	// so its touches never reach here.
+	useEffect(() => {
+		const stage = stageRef.current;
+		if (!stage) return;
+		return watchTouches(stage, {
+			tap: (x) => handlers.current.tap(x),
+			swipe: (dir) => handlers.current.swipe(dir),
+			lastScroll: () => Number.NEGATIVE_INFINITY,
+		});
+	}, []);
 
 	// First chapter, from the saved position.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: runs once per book
@@ -700,17 +812,30 @@ export function Reader({
 	const showBars = bars || !!panel;
 	const toggle = (p: "toc" | "settings") => setPanel((cur) => (cur === p ? null : p));
 	const keepBars = {
-		onMouseEnter: () => {
-			overBars.current = true;
+		onPointerEnter: (e: PointerEvent<HTMLElement>) => e.pointerType === "mouse" && hold("hover", true),
+		onPointerLeave: (e: PointerEvent<HTMLElement>) => e.pointerType === "mouse" && hold("hover", false),
+		// A finger on the bars (dragging the scrubber, say) keeps them until it lifts.
+		onPointerDown: (e: PointerEvent<HTMLElement>) => {
+			if (e.pointerType === "mouse") return;
+			hold("press", true);
+			const up = () => {
+				window.removeEventListener("pointerup", up);
+				window.removeEventListener("pointercancel", up);
+				hold("press", false);
+			};
+			window.addEventListener("pointerup", up);
+			window.addEventListener("pointercancel", up);
 		},
-		onMouseLeave: () => {
-			overBars.current = false;
+		// Keyboard focus brings the bars back and keeps them while it stays there. Only visible
+		// focus counts: a tapped button keeps focus on Android without the bars needing to stay.
+		onFocus: (e: FocusEvent<HTMLElement>) => focusVisible(e.target) && hold("focus", true),
+		onBlur: (e: FocusEvent<HTMLElement>) => {
+			if (!e.currentTarget.contains(e.relatedTarget as Node | null) && holds.current.focus) hold("focus", false);
 		},
 	};
 
 	return (
-		// biome-ignore lint/a11y/noStaticElementInteractions: mouse movement only reveals the bars; keys work without it
-		<div className={s.reader} style={style} onMouseMove={poke}>
+		<div className={s.reader} style={style} onPointerMove={(e) => e.pointerType === "mouse" && poke()}>
 			<header className={cx(s.top, !showBars && s.hidden)} {...keepBars}>
 				<button
 					type="button"

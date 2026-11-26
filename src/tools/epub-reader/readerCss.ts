@@ -43,6 +43,13 @@ export function forcedTextColor(s: ReaderSettings): string | null {
 	return s.colors === "override" ? (s.textColor ?? THEMES[s.theme].text) : null;
 }
 
+/**
+ * Touch on the page: the reader handles taps and sideways swipes itself (gestures.ts), so the
+ * browser only pans vertically and pinch-zooms. That also drops the double-tap-zoom wait and
+ * keeps a sideways swipe from turning into the browser's "go back" gesture. No gray tap flash.
+ */
+const TOUCH = "touch-action: pan-y pinch-zoom !important; -webkit-tap-highlight-color: transparent;";
+
 export function readerCss(s: ReaderSettings, g: Geometry, fixed: boolean): string {
 	return `@layer reader {\n${rules(s, g, fixed)}\n}`;
 }
@@ -53,6 +60,7 @@ function rules(s: ReaderSettings, g: Geometry, fixed: boolean): string {
 	if (fixed) {
 		// Fixed-layout pages keep the publisher's design; only the surround is themed.
 		return `html, body { margin: 0 !important; padding: 0 !important; overflow: hidden !important; }
+html { ${TOUCH} }
 html { background: ${t.bg} !important; }
 ${dim ? `img, svg, video { ${dim} }` : ""}`;
 	}
@@ -118,6 +126,7 @@ html {
 	font-size: ${s.size}px !important;
 	-webkit-text-size-adjust: 100%;
 	text-size-adjust: 100%;
+	${TOUCH}
 }
 body {
 	margin: 0 !important;
