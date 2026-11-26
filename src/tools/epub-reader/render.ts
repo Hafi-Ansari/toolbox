@@ -2,7 +2,9 @@
 // sandboxed iframe. Book content is untrusted, so:
 //   - scripts, frames, forms, event handlers and javascript: URLs are removed
 //   - every resource (images, fonts, CSS) is rewritten to a blob: URL from the zip
-//   - a CSP meta blocks all network access (no tracking pixels, no remote fonts)
+//   - a CSP meta blocks all network access (no tracking pixels, no remote fonts) and every
+//     script: the frame's sandbox allows scripts so the reader's own listeners run in WebKit,
+//     which makes this CSP the guard against book code, alongside the stripping above
 // Links are rewritten to data attributes the reader handles itself.
 import { type Book, parseXml, resolvePath } from "./book.ts";
 
@@ -17,7 +19,7 @@ export interface Chapter {
 }
 
 export const CSP =
-	"default-src 'none'; img-src blob: data:; media-src blob: data:; style-src 'unsafe-inline' blob: data:; font-src blob: data:";
+	"default-src 'none'; script-src 'none'; img-src blob: data:; media-src blob: data:; style-src 'unsafe-inline' blob: data:; font-src blob: data:";
 
 const STRIP_ELEMENTS =
 	"script, noscript, iframe, frame, frameset, object, embed, applet, form, base, meta[http-equiv], portal";

@@ -42,7 +42,7 @@ Small, fast tools that run entirely in the browser. No uploads, no accounts, no 
 ## How the reader stays light and safe
 
 - **Native rendering.** Chapters are the book's own XHTML/CSS, rendered by the browser in an iframe, with no WASM involved. Opening a book reads only the zip's central directory; each chapter is inflated on demand.
-- **Untrusted content is inert.** Book scripts, frames, forms, event handlers and `javascript:` URLs are stripped, and the iframe is sandboxed without `allow-scripts`. A CSP blocks every network request, so images and fonts come only from the book itself as `blob:` URLs.
+- **Untrusted content is inert.** Book scripts, frames, forms, event handlers and `javascript:` URLs are stripped, and the frame's CSP allows no script and no network request, so images and fonts come only from the book itself as `blob:` URLs. The iframe's sandbox does include `allow-scripts`: WebKit (every iPhone browser) runs no event listener in a frame without it, not even the reader's own, so taps and swipes would do nothing there.
 - **Pagination** uses CSS columns, one per page. Positions are saved as a text anchor, not a page number, so font, width and window changes keep your place.
 - **Library** books live in the Origin Private File System: private to the site, never uploaded, streamed in so large files never sit in memory.
 

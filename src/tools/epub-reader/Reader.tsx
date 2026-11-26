@@ -877,7 +877,11 @@ export function Reader({
 			</header>
 
 			<div ref={stageRef} className={s.stage}>
-				<iframe ref={frameRef} className={s.frame} title={book.title} sandbox="allow-same-origin" />
+				{/* allow-scripts is for the reader, not the book: WebKit (every iPhone browser) never runs
+				    listeners the reader adds to a frame that may not run scripts, so taps, swipes and links
+				    did nothing there. The book still can't run anything: its scripts and handlers are
+				    stripped, and the frame's CSP (render.ts) allows no script at all. */}
+				<iframe ref={frameRef} className={s.frame} title={book.title} sandbox="allow-same-origin allow-scripts" />
 				{(paged || fixed) && (
 					<>
 						<button
