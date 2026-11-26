@@ -1,0 +1,376 @@
+.page {
+	display: grid;
+	gap: var(--s-5);
+}
+
+.intro {
+	display: grid;
+	gap: var(--s-3);
+	max-width: 640px;
+}
+
+.intro h1 {
+	font-size: var(--fs-xl);
+}
+
+.arrow {
+	color: var(--accent);
+	font-weight: 500;
+}
+
+.lead {
+	color: var(--text-muted);
+	font-size: var(--fs-md);
+}
+
+.panel {
+	padding: var(--s-4);
+}
+
+.engine {
+	color: var(--accent-soft);
+}
+
+.workspace {
+	display: grid;
+	gap: var(--s-5);
+	padding: var(--s-2);
+	min-width: 0;
+}
+
+.fileRow {
+	display: flex;
+	align-items: center;
+	gap: var(--s-3);
+	min-width: 0;
+}
+
+.fileRow > :first-child {
+	flex: 1;
+	min-width: 0;
+}
+
+.options {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--s-5) var(--s-6);
+	padding-top: var(--s-4);
+	border-top: 1px solid var(--border);
+}
+
+.modeHint {
+	flex-basis: 100%;
+	font-size: var(--fs-sm);
+	color: var(--text-muted);
+	max-width: 620px;
+}
+
+/* ---------- Text beside page. Wider than the page column on large screens. */
+
+.review {
+	--review: min(1360px, calc(100vw - 64px));
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	gap: var(--s-4);
+	width: max(100%, var(--review));
+	margin-inline: min(0px, calc((100% - var(--review)) / 2));
+	scroll-margin-top: var(--s-4);
+}
+
+.textPane,
+.pagePane {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	height: min(78vh, 900px);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--surface-2);
+	overflow: hidden;
+}
+
+.paneBar {
+	display: flex;
+	align-items: center;
+	gap: var(--s-2);
+	min-height: 44px;
+	padding: var(--s-1) var(--s-3);
+	border-bottom: 1px solid var(--border);
+	font-size: var(--fs-sm);
+}
+
+.paneTitle {
+	font-weight: 600;
+	white-space: nowrap;
+}
+
+.paneMeta {
+	color: var(--text-muted);
+	font-weight: 400;
+	font-size: var(--fs-sm);
+}
+
+.paneBar > .paneMeta {
+	margin-left: auto;
+}
+
+.edited {
+	color: var(--accent-soft);
+	font-weight: 400;
+}
+
+.text {
+	flex: 1;
+	width: 100%;
+	resize: none;
+	border: 0;
+	padding: var(--s-3) var(--s-4);
+	background: transparent;
+	color: var(--text);
+	font-family: var(--font-mono);
+	font-size: var(--fs-sm);
+	line-height: 1.6;
+	tab-size: 4;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.text:focus {
+	outline: none;
+	box-shadow: inset 0 0 0 1px var(--accent-deep);
+}
+
+.text::selection {
+	background: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.iconButton {
+	display: inline-grid;
+	place-items: center;
+	width: 32px;
+	height: 32px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-sm);
+	background: transparent;
+	color: var(--text);
+	cursor: pointer;
+}
+
+.iconButton:hover:not(:disabled) {
+	border-color: var(--border-strong);
+}
+
+.iconButton:disabled {
+	opacity: 0.35;
+	cursor: default;
+}
+
+.iconButton:focus-visible,
+.jump:focus-visible,
+.flag:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+}
+
+.jump {
+	margin-left: auto;
+	min-width: 0;
+	max-width: 50%;
+	height: 32px;
+	padding: 0 var(--s-2);
+	border: 1px solid var(--border);
+	border-radius: var(--radius-sm);
+	background: var(--surface);
+	color: var(--text);
+	font: inherit;
+	font-size: var(--fs-sm);
+}
+
+.sheetHolder {
+	flex: 1;
+	overflow: auto;
+	padding: var(--s-3);
+}
+
+.sheet {
+	position: relative;
+	width: 100%;
+	border-radius: 4px;
+	overflow: hidden;
+	background: #fff;
+	transition: opacity var(--dur) var(--ease);
+}
+
+.sheet img {
+	display: block;
+	width: 100%;
+	height: 100%;
+	user-select: none;
+}
+
+.sheetLoading {
+	width: 100%;
+	aspect-ratio: 3 / 4;
+	border-radius: 4px;
+	background: var(--surface);
+}
+
+.markLine,
+.markFlag {
+	position: absolute;
+	border-radius: 3px;
+	pointer-events: none;
+}
+
+.markLine {
+	background: color-mix(in srgb, var(--accent) 22%, transparent);
+	box-shadow: 0 0 0 1.5px var(--accent-deep);
+}
+
+.markFlag {
+	background: color-mix(in srgb, var(--danger) 18%, transparent);
+	box-shadow: 0 0 0 1.5px var(--danger);
+}
+
+/* ---------- Review list */
+
+.flags {
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--surface-2);
+}
+
+.flags summary {
+	padding: var(--s-3) var(--s-4);
+	font-size: var(--fs-sm);
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.flags ul {
+	list-style: none;
+	margin: 0;
+	padding: 0 var(--s-2) var(--s-2);
+	max-height: 320px;
+	overflow: auto;
+}
+
+.flags > p {
+	padding: 0 var(--s-4) var(--s-3);
+}
+
+.flag {
+	display: grid;
+	grid-template-columns: 190px 56px minmax(0, 1fr);
+	gap: var(--s-3);
+	width: 100%;
+	padding: var(--s-2);
+	border: 0;
+	border-radius: var(--radius-sm);
+	background: transparent;
+	color: var(--text);
+	font: inherit;
+	font-size: var(--fs-sm);
+	text-align: left;
+	cursor: pointer;
+}
+
+.flag:hover {
+	background: var(--surface);
+}
+
+.flagKind {
+	color: var(--danger);
+}
+
+.flagNote {
+	color: var(--text-muted);
+}
+
+.flagPage {
+	color: var(--text-muted);
+	font-family: var(--font-mono);
+	font-size: var(--fs-xs);
+	line-height: 20px;
+}
+
+.flagReason {
+	color: var(--text-muted);
+	overflow-wrap: anywhere;
+}
+
+.actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--s-3);
+}
+
+.shortcut {
+	font-size: var(--fs-sm);
+	color: var(--text-muted);
+}
+
+.facts {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+	gap: var(--s-4);
+}
+
+.facts li {
+	display: flex;
+	gap: var(--s-2);
+	align-items: flex-start;
+	font-size: var(--fs-sm);
+	color: var(--text-muted);
+}
+
+.facts svg {
+	flex: none;
+	margin-top: 3px;
+	color: var(--accent);
+}
+
+.facts strong {
+	color: var(--text);
+	font-weight: 600;
+}
+
+@media (max-width: 860px) {
+	.review {
+		grid-template-columns: minmax(0, 1fr);
+		width: 100%;
+		margin-inline: 0;
+	}
+
+	.textPane,
+	.pagePane {
+		height: 70vh;
+	}
+}
+
+@media (max-width: 560px) {
+	.intro h1 {
+		font-size: 26px;
+	}
+
+	.fileRow {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	.workspace {
+		padding: 0;
+	}
+
+	.flag {
+		grid-template-columns: minmax(0, 1fr) auto;
+	}
+
+	.flagReason {
+		grid-column: 1 / -1;
+	}
+}

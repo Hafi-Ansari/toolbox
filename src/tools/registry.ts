@@ -33,4 +33,13 @@ export const tools: ToolMeta[] = [
 		tags: ["EPUB", "Reader"],
 		load: () => import("./epub-reader/index.tsx"),
 	},
+	{
+		id: "pdf-txt",
+		path: "/pdf-txt",
+		title: "PDF → TXT",
+		blurb: "Turn a book of poems or prose into clean plain text, checked against the printed page.",
+		icon: "text",
+		tags: ["PDF", "TXT", "Poetry"],
+		load: () => import("./pdf-txt/index.tsx"),
+	},
 ];
