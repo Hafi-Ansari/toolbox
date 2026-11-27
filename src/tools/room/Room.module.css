@@ -276,3 +276,167 @@
 		margin-left: 0;
 	}
 }
+
+/* ---------- Room body: the text, and the files beside it (below it on phones) */
+
+.roomBody {
+	display: grid;
+	gap: var(--s-4);
+	min-width: 0;
+}
+
+.columns {
+	display: grid;
+	gap: var(--s-4);
+	min-width: 0;
+}
+
+.textColumn {
+	display: grid;
+	align-content: start;
+	gap: var(--s-4);
+	min-width: 0;
+}
+
+@media (min-width: 900px) {
+	.columns {
+		grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+		align-items: start;
+	}
+}
+
+.files,
+.filesDragging {
+	display: grid;
+	align-content: start;
+	gap: var(--s-3);
+	min-width: 0;
+	padding: var(--s-4);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--surface-2);
+}
+
+.filesDragging {
+	border: 1px dashed var(--accent);
+	background: color-mix(in srgb, var(--accent) 8%, var(--surface-2));
+}
+
+.filesHead {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--s-3);
+}
+
+.filesTitle {
+	font-size: var(--fs-md);
+	font-weight: 600;
+}
+
+.pick,
+.pickDisabled {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--s-2);
+	min-height: 36px;
+	padding: 0 var(--s-3);
+	border: 1px solid var(--border-strong);
+	border-radius: var(--radius-sm);
+	color: var(--text);
+	font-size: var(--fs-sm);
+	font-weight: 500;
+	cursor: pointer;
+}
+
+.pick:hover {
+	border-color: var(--accent-deep);
+}
+
+.pick:focus-within {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+}
+
+.pickDisabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+/* Visually hidden but still a real input, so the label opens the picker everywhere (iOS included). */
+.pickInput {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	opacity: 0;
+	overflow: hidden;
+	pointer-events: none;
+}
+
+.dropHint {
+	color: var(--accent-soft);
+	font-size: var(--fs-sm);
+	font-weight: 500;
+}
+
+.fileList {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	gap: var(--s-2);
+}
+
+.fileRow {
+	display: flex;
+	align-items: center;
+	gap: var(--s-2);
+	min-width: 0;
+	padding: var(--s-2) var(--s-2) var(--s-2) var(--s-3);
+	border: 1px solid var(--border);
+	border-radius: var(--radius-sm);
+	background: var(--surface);
+}
+
+.fileText {
+	display: grid;
+	gap: 2px;
+	flex: 1;
+	min-width: 0;
+}
+
+.fileName {
+	font-size: var(--fs-sm);
+	font-weight: 500;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.fileButton {
+	display: inline-grid;
+	place-items: center;
+	flex: none;
+	width: 36px;
+	height: 36px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-sm);
+	background: transparent;
+	color: var(--text);
+	cursor: pointer;
+}
+
+.fileButton:hover:not(:disabled) {
+	border-color: var(--accent-deep);
+}
+
+.fileButton:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+.fileButton:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+}
