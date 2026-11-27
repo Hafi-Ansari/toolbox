@@ -448,12 +448,31 @@
    1200px, under the panes). */
 
 @media (min-width: 861px) {
-	/* Centred on the site column, like a full-bleed figure. */
+	/* The site column itself widens while a book is open (data-wide-page, App.module.css),
+	   so the card simply fills it and lines up with the header and title. */
 	.wide {
-		--wide: min(1920px, calc(100vw - 64px));
-		width: max(100%, var(--wide));
-		margin-inline: min(0px, calc((100% - var(--wide)) / 2));
 		padding: var(--s-4);
+	}
+
+	/* Title and intro on one line above the wide workspace. */
+	.page[data-wide-page] .intro {
+		display: flex;
+		align-items: baseline;
+		gap: var(--s-5);
+		max-width: none;
+	}
+
+	.page[data-wide-page] .intro h1 {
+		flex: none;
+	}
+
+	/* Zero base width: the line fills what's left but never widens the page to fit itself. */
+	.page[data-wide-page] .lead {
+		flex: 1 1 0;
+		width: 0;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	.wide > .workspace {

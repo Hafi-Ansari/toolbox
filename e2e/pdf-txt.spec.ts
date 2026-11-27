@@ -84,6 +84,23 @@ test.describe("PDF → TXT", () => {
 		);
 	});
 
+	test("on a wide screen, header, title and workspace share one wide column", async ({ browser }) => {
+		const page = await (await browser.newContext({ viewport: { width: 1600, height: 1000 } })).newPage();
+		await page.goto("/pdf-txt");
+		const idle = await page.locator("main").boundingBox();
+		expect(idle?.width).toBe(960);
+		await open(page);
+		await expect(text(page)).toHaveValue(/^Lantern Weather/);
+		const left = async (loc: ReturnType<Page["locator"]>) => Math.round((await loc.first().boundingBox())?.x ?? -1);
+		const card = page.locator("main [class*=_wide_]");
+		const edge = await left(card);
+		expect(await left(page.locator("header a").first())).toBe(edge);
+		expect(await left(page.getByRole("heading", { level: 1 }))).toBe(edge);
+		expect((await card.boundingBox())?.width).toBeGreaterThan(1400);
+		expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
+		await page.context().close();
+	});
+
 	test("rejects files that aren't PDFs", async ({ page }) => {
 		await open(page, { name: "notes.pdf", mimeType: "application/pdf", buffer: Buffer.from("just text") } as never);
 		await expect(page.getByText("This doesn't look like a PDF file.")).toBeVisible();

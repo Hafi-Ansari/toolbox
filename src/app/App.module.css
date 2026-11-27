@@ -8,6 +8,14 @@
 	padding: 0 var(--s-4);
 }
 
+/* A tool can ask for a wide page (PDF → TXT does while a book is open): header, "All tools",
+   title, workspace and footer then share one wide column instead of the content column. */
+@media (min-width: 861px) {
+	.shell:has([data-wide-page]) {
+		max-width: calc(min(1920px, 100vw - 64px) + 2 * var(--s-4));
+	}
+}
+
 /* ---------- Header */
 .header {
 	display: flex;

@@ -173,7 +173,8 @@ export default function PdfTxtTool() {
 	};
 
 	return (
-		<div className={s.page}>
+		// data-wide-page: on wide screens the site column widens to the workspace (App.module.css).
+		<div className={s.page} data-wide-page={state.kind === "ready" ? "" : undefined}>
 			<header className={s.intro}>
 				<h1>
 					PDF <span className={s.arrow}>→</span> TXT
