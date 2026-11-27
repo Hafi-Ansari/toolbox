@@ -5,7 +5,10 @@
 	width: 100%;
 	max-width: calc(var(--content) + 2 * var(--s-4));
 	margin: 0 auto;
-	padding: 0 var(--s-4);
+	/* viewport-fit=cover (index.html) lets pages run under an iPhone's notch and home bar;
+	   keep content clear of them. env() is 0 everywhere else. */
+	padding: 0 max(var(--s-4), env(safe-area-inset-right)) env(safe-area-inset-bottom)
+		max(var(--s-4), env(safe-area-inset-left));
 }
 
 /* A tool can ask for a wide page (PDF → TXT does while a book is open): header, "All tools",
