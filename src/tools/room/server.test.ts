@@ -155,6 +155,16 @@ describe("shared rooms", () => {
 		expect((await call("PUT", `?id=${room.id}`, { text: "other ip" }, "5.6.7.8")).status).toBe(200);
 	});
 
+	it("leaves no key behind when someone polls a room that has ended", async () => {
+		const { call, rooms } = setup();
+		const { room, token } = await create(call);
+		await call("POST", `?id=${room.id}`, { action: "end", token });
+		expect((await call("GET", `?id=${room.id}&client=late-visitor`)).json.gone).toBe(true);
+		// The room's keys are all gone: listing finds nothing and no visitor list was created.
+		expect(await rooms.list()).toEqual([]);
+		expect(await (rooms as unknown as { kv: Kv }).kv.zcount(`toolbox:room:${room.id}:seen`, 0, "+inf")).toBe(0);
+	});
+
 	it("keeps every key under the toolbox: prefix", async () => {
 		const { call, keys } = setup();
 		const { room, token } = await create(call);

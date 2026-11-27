@@ -328,13 +328,12 @@ export class Rooms {
 	async read(id: string, since: number | null, client: string | null) {
 		const now = this.now();
 		const key = K.room(id);
-		const [h] = await Promise.all([
-			this.kv.hmget(key, "ver", "updated", "created", "name", "emoji"),
-			client ? this.kv.zadd(K.seen(id), now, client) : null,
-		]);
+		const h = await this.kv.hmget(key, "ver", "updated", "created", "name", "emoji");
 		const created = Number(h?.created);
 		if (!h?.created || now - created > MAX_AGE_MS) return null;
-		if (client) await this.kv.expire(K.seen(id), ROOM_TTL_S);
+		// Only rooms that exist record visitors, and the key always gets an expiry with it:
+		// the database is shared, so no toolbox key may outlive its room.
+		if (client) await Promise.all([this.kv.zadd(K.seen(id), now, client), this.kv.expire(K.seen(id), ROOM_TTL_S)]);
 		const ver = Number(h.ver);
 		const base = { ver, updated: Number(h.updated), created, name: h.name ?? "", emoji: h.emoji ?? "💬" };
 		if (since === ver) return base;
