@@ -1,8 +1,6 @@
 // Minimal streaming ZIP writer.
-// Every entry is fully in memory when added, so each local header carries its
-// real CRC and sizes (no data descriptors). That is the most compatible form
-// for EPUB readers, which are strict about the leading `mimetype` entry.
-// Offsets past 4 GB and more than 65 535 entries switch on ZIP64 records.
+// add() puts real CRCs and sizes in local headers for EPUB compatibility.
+// addStream() uses data descriptors so a file can arrive a chunk at a time.
 import { deflateSync } from "fflate";
 
 const CRC_TABLE = (() => {
@@ -16,9 +14,12 @@ const CRC_TABLE = (() => {
 })();
 
 export function crc32(data: Uint8Array): number {
-	let c = 0xffffffff;
+	return (updateCrc(0xffffffff, data) ^ 0xffffffff) >>> 0;
+}
+
+function updateCrc(c: number, data: Uint8Array): number {
 	for (let i = 0; i < data.length; i++) c = CRC_TABLE[(c ^ data[i]) & 0xff] ^ (c >>> 8);
-	return (c ^ 0xffffffff) >>> 0;
+	return c;
 }
 
 interface Entry {
@@ -29,6 +30,7 @@ interface Entry {
 	csize: number;
 	usize: number;
 	offset: number;
+	descriptor?: boolean;
 }
 
 const enc = new TextEncoder();
@@ -44,6 +46,7 @@ export class ZipWriter {
 	private offset = 0;
 	private entries: Entry[] = [];
 	private names = new Set<string>();
+	private writing = false;
 	private readonly out: ChunkSink;
 
 	constructor(out: ChunkSink) {
@@ -55,6 +58,7 @@ export class ZipWriter {
 	}
 
 	add(name: string, data: Uint8Array, compress: boolean): void {
+		if (this.writing) throw new Error("Close the current ZIP entry before adding another.");
 		if (this.names.has(name)) throw new Error(`Duplicate zip entry: ${name}`);
 		this.names.add(name);
 		const nameBytes = enc.encode(name);
@@ -100,29 +104,105 @@ export class ZipWriter {
 		this.emit(body);
 	}
 
+	addStream(name: string, size: number): { write: ChunkSink; close: () => void } {
+		if (this.writing) throw new Error("Close the current ZIP entry before adding another.");
+		if (this.names.has(name)) throw new Error(`Duplicate zip entry: ${name}`);
+		const bytes = enc.encode(name);
+		if (!Number.isSafeInteger(size) || size < 0 || bytes.length > 0xffff) throw new Error("Invalid ZIP entry size.");
+		const entry: Entry = {
+			name: bytes,
+			utf8: true,
+			method: 0,
+			crc: 0,
+			csize: size,
+			usize: size,
+			offset: this.offset,
+			descriptor: true,
+		};
+		const z64 = size >= MAX32;
+		const extraLen = z64 ? 20 : 0;
+		const h = new DataView(new ArrayBuffer(30));
+		h.setUint32(0, 0x04034b50, true);
+		h.setUint16(4, z64 ? 45 : 20, true);
+		h.setUint16(6, 0x0808, true);
+		h.setUint16(12, DOS_DATE, true);
+		h.setUint32(18, z64 ? MAX32 : 0, true);
+		h.setUint32(22, z64 ? MAX32 : 0, true);
+		h.setUint16(26, bytes.length, true);
+		h.setUint16(28, extraLen, true);
+		this.writing = true;
+		this.names.add(name);
+		this.emit(new Uint8Array(h.buffer));
+		this.emit(bytes);
+		if (z64) {
+			const extra = new DataView(new ArrayBuffer(extraLen));
+			extra.setUint16(0, 0x0001, true);
+			extra.setUint16(2, 16, true);
+			extra.setBigUint64(4, BigInt(size), true);
+			extra.setBigUint64(12, BigInt(size), true);
+			this.emit(new Uint8Array(extra.buffer));
+		}
+		let crc = 0xffffffff;
+		let remaining = size;
+		let closed = false;
+		return {
+			write: (chunk) => {
+				if (closed || chunk.length > remaining) throw new Error("ZIP entry exceeds its declared size.");
+				remaining -= chunk.length;
+				crc = updateCrc(crc, chunk);
+				this.emit(chunk);
+			},
+			close: () => {
+				if (closed || remaining !== 0) throw new Error("Incomplete ZIP entry.");
+				closed = true;
+				entry.crc = (crc ^ 0xffffffff) >>> 0;
+				const d = new DataView(new ArrayBuffer(z64 ? 24 : 16));
+				d.setUint32(0, 0x08074b50, true);
+				d.setUint32(4, entry.crc, true);
+				if (z64) {
+					d.setBigUint64(8, BigInt(size), true);
+					d.setBigUint64(16, BigInt(size), true);
+				} else {
+					d.setUint32(8, size, true);
+					d.setUint32(12, size, true);
+				}
+				this.entries.push(entry);
+				this.emit(new Uint8Array(d.buffer));
+				this.writing = false;
+			},
+		};
+	}
+
 	finish(): void {
+		if (this.writing) throw new Error("Close the current ZIP entry before finishing.");
 		const cdStart = this.offset;
 		for (const e of this.entries) {
-			const z64 = e.offset >= MAX32;
-			const extraLen = z64 ? 12 : 0;
+			const zOffset = e.offset >= MAX32;
+			const zSize = e.usize >= MAX32;
+			const z64 = zOffset || zSize;
+			const extraLen = z64 ? 4 + (zSize ? 16 : 0) + (zOffset ? 8 : 0) : 0;
 			const c = new DataView(new ArrayBuffer(46 + extraLen));
 			c.setUint32(0, 0x02014b50, true);
 			c.setUint16(4, z64 ? 45 : 20, true);
 			c.setUint16(6, z64 ? 45 : 20, true);
-			c.setUint16(8, e.utf8 ? 0x0800 : 0, true);
+			c.setUint16(8, (e.utf8 ? 0x0800 : 0) | (e.descriptor ? 8 : 0), true);
 			c.setUint16(10, e.method, true);
 			c.setUint16(12, DOS_TIME, true);
 			c.setUint16(14, DOS_DATE, true);
 			c.setUint32(16, e.crc, true);
-			c.setUint32(20, e.csize, true);
-			c.setUint32(24, e.usize, true);
+			c.setUint32(20, zSize ? MAX32 : e.csize, true);
+			c.setUint32(24, zSize ? MAX32 : e.usize, true);
 			c.setUint16(28, e.name.length, true);
 			c.setUint16(30, extraLen, true);
-			c.setUint32(42, z64 ? MAX32 : e.offset, true);
+			c.setUint32(42, zOffset ? MAX32 : e.offset, true);
 			if (z64) {
 				c.setUint16(46, 0x0001, true);
-				c.setUint16(48, 8, true);
-				c.setBigUint64(50, BigInt(e.offset), true);
+				c.setUint16(48, extraLen - 4, true);
+				if (zSize) {
+					c.setBigUint64(50, BigInt(e.usize), true);
+					c.setBigUint64(58, BigInt(e.csize), true);
+				}
+				if (zOffset) c.setBigUint64(zSize ? 66 : 50, BigInt(e.offset), true);
 			}
 			this.emit(new Uint8Array(c.buffer, 0, 46));
 			this.emit(e.name);
@@ -130,7 +210,7 @@ export class ZipWriter {
 		}
 		const cdSize = this.offset - cdStart;
 		const count = this.entries.length;
-		const needZ64 = count > 0xffff || cdStart >= MAX32 || cdSize >= MAX32;
+		const needZ64 = count >= 0xffff || cdStart >= MAX32 || cdSize >= MAX32;
 
 		if (needZ64) {
 			const z64EocdAt = this.offset;

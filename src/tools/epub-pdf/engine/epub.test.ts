@@ -1,8 +1,8 @@
 import { strFromU8, unzipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { detectBytes } from "../../../lib/detect.ts";
+import { crc32, ZipWriter } from "../../../lib/zipWriter.ts";
 import { EpubBuilder } from "./epub.ts";
-import { crc32, ZipWriter } from "./zip.ts";
 
 function collect(): { sink: (c: Uint8Array) => void; bytes: () => Uint8Array } {
 	const parts: Uint8Array[] = [];

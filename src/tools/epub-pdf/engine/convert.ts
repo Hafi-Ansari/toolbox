@@ -13,9 +13,9 @@ import {
 import { extractPage, type PageImages } from "../../../lib/pdf/extract.ts";
 import type { StreamHandle } from "../../../lib/pdf/fileStream.ts";
 import { bodyFontSize, type PageModel, stripFurniture, toParagraphs } from "../../../lib/pdf/heuristics.ts";
+import { type ChunkSink, crc32 } from "../../../lib/zipWriter.ts";
 import { renderParas, splitChapters } from "./chapters.ts";
 import { EpubBuilder, type NavEntry } from "./epub.ts";
-import { type ChunkSink, crc32 } from "./zip.ts";
 
 export type { Format, InputInfo, Progress } from "../../../lib/pdf/document.ts";
 export { inspect } from "../../../lib/pdf/document.ts";

@@ -2,7 +2,7 @@
 // package document (OPF) and navigation are written last, which is valid
 // because only `mimetype` has to come first.
 import { cleanText } from "../../../lib/pdf/text.ts";
-import { type ChunkSink, ZipWriter } from "./zip.ts";
+import { type ChunkSink, ZipWriter } from "../../../lib/zipWriter.ts";
 
 export interface EpubMeta {
 	title: string;

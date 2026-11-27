@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
+import { ZipWriter } from "../../lib/zipWriter.ts";
 import { EpubBuilder } from "../epub-pdf/engine/epub.ts";
-import { ZipWriter } from "../epub-pdf/engine/zip.ts";
 import { chapterTitle, flattenToc, openBook, resolvePath } from "./book.ts";
 import { sanitize } from "./render.ts";
 

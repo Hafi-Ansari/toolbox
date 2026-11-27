@@ -42,4 +42,13 @@ export const tools: ToolMeta[] = [
 		tags: ["PDF", "TXT", "Poetry"],
 		load: () => import("./pdf-txt/index.tsx"),
 	},
+	{
+		id: "unzip",
+		path: "/unzip",
+		title: "Unzip",
+		blurb: "Open ZIP, 7z, RAR, and other archives. Preview files and extract what you need.",
+		icon: "archive",
+		tags: ["ZIP", "7z", "RAR"],
+		load: () => import("./unzip/index.tsx"),
+	},
 ];
