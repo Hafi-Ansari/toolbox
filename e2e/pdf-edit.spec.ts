@@ -258,6 +258,8 @@ test.describe("390px mobile with touch", () => {
 		const canvas = surface(page);
 		await tool(page, "Draw").tap();
 		await expect(canvas).toHaveCSS("touch-action", "none");
+		// Keep the drawn area clear of the fixed toolbar at the bottom of the screen.
+		await canvas.evaluate((element) => element.scrollIntoView({ block: "start", behavior: "instant" }));
 		const from = await spot(canvas, 0.22, 0.19);
 		const to = await spot(canvas, 0.6, 0.26);
 		const session = browserName === "chromium" ? await context.newCDPSession(page) : null;

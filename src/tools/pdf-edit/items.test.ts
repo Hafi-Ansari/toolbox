@@ -1,9 +1,9 @@
 import { expect, it } from "vitest";
-import { EMPTY_HISTORY, editHistory } from "./history.ts";
+import { editHistory, startHistory } from "./history.ts";
 import { hitStroke, type Item, moveBy, normalizeStrokes, resizeTo, wrapLines } from "./items.ts";
 
 const page = { w: 300, h: 500, rotate: 0 };
-const mark: Item = { kind: "mark", shape: "check", id: "a", page: 0, x: 12, y: 8, w: 40, h: 20, color: "#000000" };
+const mark: Item = { kind: "mark", shape: "check", id: "a", page: "p0", x: 12, y: 8, w: 40, h: 20, color: "#000000" };
 
 it("wraps measured words, preserves explicit newlines, and breaks long words", () => {
 	expect(wrapLines("one three\n\nbeginning", 5, (text) => text.length)).toEqual(["one", "three", "", "begin", "ning"]);
@@ -20,7 +20,7 @@ it("moves and resizes items inside the page, preserving the aspect of non-text i
 it("uses distance to a stroke segment for erasing, including single-point strokes", () => {
 	const item: Item = {
 		id: "ink",
-		page: 0,
+		page: "p0",
 		color: "#000000",
 		kind: "ink",
 		...normalizeStrokes(
@@ -41,9 +41,13 @@ it("uses distance to a stroke segment for erasing, including single-point stroke
 });
 
 it("undoes and redoes edits, resetting redo when a new edit is applied", () => {
-	const added = editHistory(EMPTY_HISTORY, { type: "change", update: () => [mark] });
+	const empty = startHistory({ pages: [], items: [] });
+	const added = editHistory(empty, { type: "change", update: (state) => ({ ...state, items: [mark] }) });
 	const undone = editHistory(added, { type: "undo" });
-	expect(undone.items).toEqual([]);
-	expect(editHistory(undone, { type: "redo" }).items).toEqual([mark]);
-	expect(editHistory(undone, { type: "change", update: () => [moveBy(mark, 20, 0, page)] }).future).toEqual([]);
+	expect(undone.present.items).toEqual([]);
+	expect(editHistory(undone, { type: "redo" }).present.items).toEqual([mark]);
+	expect(
+		editHistory(undone, { type: "change", update: (state) => ({ ...state, items: [moveBy(mark, 20, 0, page)] }) })
+			.future,
+	).toEqual([]);
 });

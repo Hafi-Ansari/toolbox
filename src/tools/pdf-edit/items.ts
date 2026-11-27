@@ -9,7 +9,7 @@ export type Signature =
 export type Tool = "select" | "text" | "draw" | "erase" | Shape | "signature" | "image";
 export type Mode = "flatten" | "annotations";
 export type ImageDataMap = Record<string, Uint8Array<ArrayBuffer>>;
-export type Item = { id: string; page: number; x: number; y: number; w: number; h: number; color: string } & (
+export type Item = { id: string; page: string; x: number; y: number; w: number; h: number; color: string } & (
 	| { kind: "text"; text: string; size: number; lines: string[] }
 	| { kind: "ink"; strokes: Strokes; width: number }
 	| { kind: "mark"; shape: Shape }
