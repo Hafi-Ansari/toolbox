@@ -269,3 +269,246 @@
 		display: none;
 	}
 }
+
+/* Mode switch */
+
+.modes {
+	display: flex;
+	gap: var(--s-1);
+	padding: var(--s-1);
+	width: fit-content;
+	max-width: 100%;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--surface);
+}
+
+.mode {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--s-2);
+	min-height: 40px;
+	padding: 0 var(--s-4);
+	border: 0;
+	border-radius: var(--radius-sm);
+	background: none;
+	color: var(--text-muted);
+	font: inherit;
+	font-weight: 500;
+	cursor: pointer;
+}
+
+.mode:hover {
+	color: var(--text);
+}
+
+.mode[aria-selected="true"] {
+	background: var(--surface-2);
+	color: var(--text);
+	box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+.mode:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+}
+
+.tool[hidden] {
+	display: none;
+}
+
+/* Create */
+
+.create {
+	display: grid;
+	gap: var(--s-4);
+	min-width: 0;
+}
+
+.adder {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	gap: var(--s-4);
+	align-items: center;
+	padding: var(--s-5) var(--s-4);
+	border: 1.5px dashed var(--border-strong);
+	border-radius: var(--radius);
+	background: color-mix(in srgb, var(--surface) 70%, transparent);
+	transition:
+		border-color var(--dur) var(--ease),
+		background-color var(--dur) var(--ease);
+}
+
+.adderDragging {
+	border-style: solid;
+	border-color: var(--accent);
+	background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+}
+
+.adderIcon {
+	display: grid;
+	place-items: center;
+	width: 48px;
+	height: 48px;
+	border-radius: 14px;
+	background: var(--accent-ink);
+	color: var(--accent);
+	border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.adderText {
+	display: grid;
+	gap: var(--s-1);
+	min-width: 0;
+}
+
+.adderText strong {
+	font-size: var(--fs-lg);
+	letter-spacing: -0.01em;
+}
+
+/* A file input dressed as the primary button. */
+.fileButton {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--s-2);
+	min-height: 40px;
+	padding: 0 var(--s-4);
+	border-radius: var(--radius-sm);
+	background: var(--accent);
+	color: var(--accent-ink);
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.fileButton:focus-within {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+}
+
+.fileButton input {
+	position: absolute;
+	inset: 0;
+	opacity: 0;
+	cursor: pointer;
+}
+
+.totals {
+	margin: 0;
+	font: 500 var(--fs-sm) var(--font-mono);
+}
+
+.addedRow {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 72px 34px;
+	min-height: 42px;
+	gap: var(--s-2);
+	align-items: center;
+	padding: 0 var(--s-3) 0 calc(var(--s-3) + var(--indent, 0) * 14px);
+	border-bottom: 1px solid var(--border);
+}
+
+.addedName {
+	display: flex;
+	align-items: center;
+	gap: var(--s-2);
+	min-width: 0;
+	padding: 0 var(--s-1);
+}
+
+.addedName svg {
+	flex: none;
+	color: var(--text-muted);
+}
+
+.addedName span {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.addedRow .details {
+	text-align: right;
+}
+
+.options {
+	display: grid;
+	gap: var(--s-4);
+	min-width: 0;
+}
+
+.options > [role],
+.options .saving > :first-child {
+	width: 100%;
+	min-width: 0;
+}
+
+.nameField {
+	display: grid;
+	gap: var(--s-2);
+	min-width: 0;
+	width: min(100%, 30rem);
+}
+
+.nameField label {
+	font-size: var(--fs-sm);
+	font-weight: 500;
+}
+
+.nameField input,
+.nameInput {
+	width: 100%;
+	font: inherit;
+	color: var(--text);
+	background: var(--bg);
+	border: 1px solid var(--border-strong);
+	border-radius: var(--radius-sm);
+	padding: var(--s-2) var(--s-3);
+}
+
+.nameInput {
+	display: flex;
+	align-items: center;
+	gap: var(--s-1);
+}
+
+.nameInput:focus-within {
+	outline: 2px solid var(--accent);
+	outline-offset: 1px;
+}
+
+.nameInput input {
+	flex: 1;
+	min-width: 0;
+	padding: 0;
+	border: 0;
+	background: none;
+	outline: none;
+}
+
+.nameInput span {
+	color: var(--text-muted);
+	font-family: var(--font-mono);
+}
+
+@media (max-width: 640px) {
+	.adder {
+		grid-template-columns: auto minmax(0, 1fr);
+	}
+
+	.adder > .buttons {
+		grid-column: 1 / -1;
+	}
+
+	.addedRow {
+		grid-template-columns: minmax(0, 1fr) 60px 44px;
+		gap: var(--s-1);
+		padding: 0 var(--s-2) 0 calc(var(--s-2) + var(--indent, 0) * 8px);
+	}
+
+	.addedRow .iconButton,
+	.fileButton {
+		min-height: 44px;
+	}
+}

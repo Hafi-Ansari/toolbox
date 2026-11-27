@@ -1,6 +1,8 @@
 import wasmUrl from "7z-wasm/7zz.wasm?url";
 import * as Comlink from "comlink";
 import { batchingSink, ZipWriter } from "../../lib/zipWriter.ts";
+import { createArchive, positionedBatcher, workerSource } from "./create/engine.ts";
+import type { CreateOptions } from "./create/options.ts";
 import type { Archive } from "./engine/listing.ts";
 import { archiveEngine, fileSource } from "./engine/sevenzip.ts";
 
@@ -10,13 +12,20 @@ export type Output =
 	| { type: "bytes"; data: Uint8Array }
 	| { type: "progress"; bytes: number; index: number };
 
-async function loadEngine() {
+export type CreateOutput =
+	| { type: "write"; position: number; data: Uint8Array }
+	| { type: "truncate"; size: number }
+	| { type: "progress"; bytes: number; path: string }
+	| { type: "done"; size: number };
+
+async function compile() {
 	const response = await fetch(wasmUrl);
 	if (!response.ok) throw new Error(`Could not load 7-Zip (${response.status}).`);
-	return archiveEngine(await WebAssembly.compile(await response.arrayBuffer()));
+	return WebAssembly.compile(await response.arrayBuffer());
 }
 
-const engine = await loadEngine();
+const compiled = await compile();
+const engine = archiveEngine(compiled);
 
 const api = {
 	async list(file: File, password: string) {
@@ -93,6 +102,32 @@ const api = {
 		// The callback uses a separate MessagePort. Await its reply so all output
 		// has reached the save target before the call resolves on the Worker port.
 		await receive({ type: "progress", bytes, index });
+	},
+	async create(
+		files: { path: string; file: File }[],
+		directories: string[],
+		options: CreateOptions,
+		receive: (event: CreateOutput) => void,
+	) {
+		const batch = positionedBatcher((position, data) =>
+			receive(Comlink.transfer({ type: "write", position, data }, [data.buffer as ArrayBuffer])),
+		);
+		let last = 0;
+		const { size } = await createArchive(compiled, workerSource(files, directories), options, {
+			write: batch.write,
+			truncate(size) {
+				batch.flush();
+				receive({ type: "truncate", size });
+			},
+			progress(bytes, path) {
+				if (performance.now() - last < 125) return;
+				last = performance.now();
+				receive({ type: "progress", bytes, path });
+			},
+		});
+		batch.flush();
+		// Await the reply on the callback port so every write has arrived before this resolves.
+		await receive({ type: "done", size });
 	},
 };
 

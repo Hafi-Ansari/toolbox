@@ -45,8 +45,8 @@ export const tools: ToolMeta[] = [
 	{
 		id: "unzip",
 		path: "/unzip",
-		title: "Unzip",
-		blurb: "Open ZIP, 7z, RAR, and other archives. Preview files and extract what you need.",
+		title: "Zip / Unzip",
+		blurb: "Open ZIP, 7z, RAR and other archives, or pack files and folders into a new ZIP or 7z.",
 		icon: "archive",
 		tags: ["ZIP", "7z", "RAR"],
 		load: () => import("./unzip/index.tsx"),
