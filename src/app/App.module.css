@@ -11,11 +11,16 @@
 		max(var(--s-4), env(safe-area-inset-left));
 }
 
-/* A tool can ask for a wide page (PDF → TXT does while a book is open): header, "All tools",
-   title, workspace and footer then share one wide column instead of the content column. */
+/* A tool can ask for a wide page while a file is open: header, "All tools", title, workspace
+   and footer then share one wide column instead of the content column. data-wide-page="" is up
+   to 1920px (PDF → TXT); "medium" is up to 1340px (PDF editor). Never narrower than usual. */
 @media (min-width: 861px) {
 	.shell:has([data-wide-page]) {
-		max-width: calc(min(1920px, 100vw - 64px) + 2 * var(--s-4));
+		max-width: max(calc(var(--content) + 2 * var(--s-4)), calc(min(1920px, 100vw - 64px) + 2 * var(--s-4)));
+	}
+
+	.shell:has([data-wide-page="medium"]) {
+		max-width: max(calc(var(--content) + 2 * var(--s-4)), calc(min(1340px, 100vw - 64px) + 2 * var(--s-4)));
 	}
 }
 
