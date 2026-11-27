@@ -16,6 +16,8 @@ export interface RoomState {
 	name: string;
 	emoji: string;
 	text?: string;
+	/** Changes whenever the room's files change. */
+	fver?: number;
 }
 
 export class Gone extends Error {}

@@ -15,6 +15,7 @@ import {
 	readRoom,
 	writeRoom,
 } from "./client.ts";
+import { type FilesHandle, FilesPanel } from "./Files.tsx";
 import s from "./Room.module.css";
 
 /** Poll fast while text is moving, slower when it's quiet, never while the tab is hidden. */
@@ -81,7 +82,8 @@ export default function RoomTool() {
 			<header className={s.intro}>
 				<h1>Shared room</h1>
 				<p className={s.lead}>
-					A text box every device can see. Make a room, open this page on your other device, tap the room, and paste.
+					A text box and files every device can see. Make a room, open this page on your other device, tap the room, and
+					paste or add files.
 				</p>
 			</header>
 			{roomId ? <RoomView key={roomId} id={roomId} onLeave={() => go(null)} /> : <Lobby onOpen={go} />}
@@ -178,6 +180,10 @@ function RoomView({ id, onLeave }: { id: string; onLeave: () => void }) {
 	const [meta, setMeta] = useState<{ name: string; emoji: string; created: number } | null>(null);
 	const [status, setStatus] = useState<Status>("loading");
 	const [copied, setCopied] = useState<string | null>(null);
+	const [fver, setFver] = useState<number | null>(null);
+	const [dragging, setDragging] = useState(false);
+	const dragDepth = useRef(0);
+	const filesPanel = useRef<FilesHandle>(null);
 	const area = useRef<HTMLTextAreaElement>(null);
 	// Sync bookkeeping lives in refs: the poll loop reads the latest values without re-rendering.
 	const ver = useRef<number | null>(null);
@@ -194,6 +200,7 @@ function RoomView({ id, onLeave }: { id: string; onLeave: () => void }) {
 			try {
 				const r = await readRoom(id, ver.current);
 				setMeta({ name: r.name, emoji: r.emoji, created: r.created });
+				setFver(r.fver ?? 0);
 				// Someone else's text: take it, unless this device has edits on the way.
 				if (r.text !== undefined && !dirty.current && !sending.current) {
 					if (r.text !== textRef.current) {
@@ -270,8 +277,44 @@ function RoomView({ id, onLeave }: { id: string; onLeave: () => void }) {
 		}
 	}
 
+	const ended = useCallback(() => setStatus("ended"), []);
+
+	/** Files dropped anywhere on the room, or pasted (unless it's text pasted into the text box). */
+	const hasFiles = (e: React.DragEvent) => [...e.dataTransfer.types].includes("Files");
+	const drop = {
+		onDragEnter(e: React.DragEvent) {
+			if (!hasFiles(e)) return;
+			e.preventDefault();
+			dragDepth.current++;
+			setDragging(true);
+		},
+		onDragOver(e: React.DragEvent) {
+			if (hasFiles(e)) e.preventDefault();
+		},
+		onDragLeave(e: React.DragEvent) {
+			if (!hasFiles(e)) return;
+			dragDepth.current = Math.max(0, dragDepth.current - 1);
+			if (dragDepth.current === 0) setDragging(false);
+		},
+		onDrop(e: React.DragEvent) {
+			if (!hasFiles(e)) return;
+			e.preventDefault();
+			dragDepth.current = 0;
+			setDragging(false);
+			const files = [...e.dataTransfer.files];
+			if (files.length && status !== "loading") filesPanel.current?.add(files);
+		},
+		onPaste(e: React.ClipboardEvent) {
+			const files = [...e.clipboardData.files];
+			if (!files.length || status === "loading") return;
+			if (e.target === area.current && e.clipboardData.types.includes("text/plain")) return;
+			e.preventDefault();
+			filesPanel.current?.add(files);
+		},
+	};
+
 	async function end() {
-		if (!window.confirm("End this room for everyone? Its text is deleted.")) return;
+		if (!window.confirm("End this room for everyone? Its text and files are deleted.")) return;
 		await endRoom(id).catch(() => {});
 		onLeave();
 	}
@@ -290,7 +333,7 @@ function RoomView({ id, onLeave }: { id: string; onLeave: () => void }) {
 			<Card className={s.panel}>
 				<div className={s.empty}>
 					<p className={s.emptyTitle}>This room has ended</p>
-					<p className={s.muted}>Its creator left, or it reached its 2-hour limit. The text is gone.</p>
+					<p className={s.muted}>Its creator left, or it reached its 2-hour limit. The text and files are gone.</p>
 					<Button icon="back" onClick={onLeave}>
 						All rooms
 					</Button>
@@ -300,63 +343,82 @@ function RoomView({ id, onLeave }: { id: string; onLeave: () => void }) {
 
 	return (
 		<Card className={s.panel}>
-			<div className={s.roomBar}>
-				<button type="button" className={s.back} onClick={onLeave} aria-label="All rooms">
-					<Icon name="back" size={16} />
-				</button>
-				<span className={s.roomName}>
-					<span aria-hidden="true">{meta?.emoji ?? "💬"}</span> {meta?.name ?? "Room"}
-					{owner && <span className={s.badge}>Yours</span>}
-				</span>
-				<span className={status === "offline" ? s.statusBad : s.status} role="status">
-					{statusText[status]}
-				</span>
-			</div>
+			<div className={s.roomBody} {...drop}>
+				<div className={s.roomBar}>
+					<button type="button" className={s.back} onClick={onLeave} aria-label="All rooms">
+						<Icon name="back" size={16} />
+					</button>
+					<span className={s.roomName}>
+						<span aria-hidden="true">{meta?.emoji ?? "💬"}</span> {meta?.name ?? "Room"}
+						{owner && <span className={s.badge}>Yours</span>}
+					</span>
+					<span className={status === "offline" ? s.statusBad : s.status} role="status">
+						{statusText[status]}
+					</span>
+				</div>
 
-			<textarea
-				ref={area}
-				className={s.text}
-				value={text}
-				onChange={(e) => edit(e.target.value)}
-				placeholder="Paste or type here. Every device in this room sees it within a second or two."
-				aria-label="Shared text"
-				spellCheck={false}
-				disabled={status === "loading"}
-			/>
+				<div className={s.columns}>
+					<div className={s.textColumn}>
+						<textarea
+							ref={area}
+							className={s.text}
+							value={text}
+							onChange={(e) => edit(e.target.value)}
+							placeholder="Paste or type here. Every device in this room sees it within a second or two."
+							aria-label="Shared text"
+							spellCheck={false}
+							disabled={status === "loading"}
+						/>
 
-			{links.length > 0 && (
-				<ul className={s.links} aria-label="Links in the text">
-					{links.map((url) => (
-						<li key={url}>
-							<a href={url} target="_blank" rel="noopener noreferrer" className={s.link}>
-								{url}
-							</a>
-							<button type="button" className={s.linkCopy} onClick={() => copy(url, url)} aria-label={`Copy ${url}`}>
-								<Icon name={copied === url ? "check" : "copy"} size={14} />
-							</button>
-						</li>
-					))}
-				</ul>
-			)}
+						{links.length > 0 && (
+							<ul className={s.links} aria-label="Links in the text">
+								{links.map((url) => (
+									<li key={url}>
+										<a href={url} target="_blank" rel="noopener noreferrer" className={s.link}>
+											{url}
+										</a>
+										<button
+											type="button"
+											className={s.linkCopy}
+											onClick={() => copy(url, url)}
+											aria-label={`Copy ${url}`}
+										>
+											<Icon name={copied === url ? "check" : "copy"} size={14} />
+										</button>
+									</li>
+								))}
+							</ul>
+						)}
+					</div>
+					<FilesPanel
+						ref={filesPanel}
+						room={id}
+						fver={fver}
+						disabled={status === "loading"}
+						onGone={ended}
+						dragging={dragging}
+					/>
+				</div>
 
-			<div className={s.actions}>
-				<Button icon={copied === "all" ? "check" : "copy"} onClick={() => copy(text, "all")} disabled={!text}>
-					{copied === "all" ? "Copied" : "Copy text"}
-				</Button>
-				<Button variant="ghost" icon="x" onClick={() => edit("")} disabled={!text}>
-					Clear
-				</Button>
-				{owner && (
-					<Button variant="ghost" onClick={end} className={s.end}>
-						End room
+				<div className={s.actions}>
+					<Button icon={copied === "all" ? "check" : "copy"} onClick={() => copy(text, "all")} disabled={!text}>
+						{copied === "all" ? "Copied" : "Copy text"}
 					</Button>
-				)}
+					<Button variant="ghost" icon="x" onClick={() => edit("")} disabled={!text}>
+						Clear
+					</Button>
+					{owner && (
+						<Button variant="ghost" onClick={end} className={s.end}>
+							End room
+						</Button>
+					)}
+				</div>
+				<p className={s.muted}>
+					{owner
+						? "You made this room. It stays open while this page is open, and ends a few seconds after you close it (or after 2 hours)."
+						: `Anyone on this site can see and edit this room.${meta ? ` Opened ${ago(Date.now() - meta.created)}.` : ""}`}
+				</p>
 			</div>
-			<p className={s.muted}>
-				{owner
-					? "You made this room. It stays open while this page is open, and ends a few seconds after you close it (or after 2 hours)."
-					: `Anyone on this site can see and edit this room.${meta ? ` Opened ${ago(Date.now() - meta.created)}.` : ""}`}
-			</p>
 		</Card>
 	);
 }
