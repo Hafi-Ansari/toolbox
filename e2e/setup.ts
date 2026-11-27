@@ -55,6 +55,7 @@ export default function setup() {
 	}
 	hostileEpub("out/hostile.epub");
 	stubbornEpub("out/stubborn.epub");
+	execFileSync(process.execPath, ["e2e/edit-fixture.ts"]);
 	poemsPdf("out/poems.pdf");
 	scanPdf("out/scan.pdf");
 	return import("./archives.ts").then(({ archiveFixtures }) => archiveFixtures());

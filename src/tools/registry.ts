@@ -51,4 +51,13 @@ export const tools: ToolMeta[] = [
 		tags: ["ZIP", "7z", "RAR"],
 		load: () => import("./unzip/index.tsx"),
 	},
+	{
+		id: "pdf-edit",
+		path: "/pdf-edit",
+		title: "PDF Editor",
+		blurb: "Add text, ink, marks, signatures and images to any page. Save an edited copy on your device.",
+		icon: "pen",
+		tags: ["PDF", "Sign", "Annotate"],
+		load: () => import("./pdf-edit/index.tsx"),
+	},
 ];

@@ -8,6 +8,7 @@ Small, fast tools that run entirely in the browser. No uploads, no accounts, no 
 | **EPUB Reader** | `/read` | A light, dark-mode ebook reader: pages or scrolling, contents, typography settings, and a library of recent books kept on the device. |
 | **PDF → TXT** | `/pdf-txt` | Turns a book of poems or prose into plain text (one verse line or one sentence per line), shown beside the printed page so you can check and edit it before saving. Reads scanned pages with OCR on demand. |
 | **Unzip** | `/unzip` | Browse ZIP, 7z, RAR and other archives, preview text and images, and extract files locally. |
+| **PDF Editor** | `/pdf-edit` | Adds text, drawings, marks, signatures and images to PDF pages and downloads a new copy. |
 
 ## Stack
 
@@ -54,6 +55,13 @@ Small, fast tools that run entirely in the browser. No uploads, no accounts, no 
 - Browsers with a folder picker can stream files into a new subfolder. Other browsers build a download in memory, so available memory limits the size of that output. The ZIP fallback also streams through the shared writer in `src/lib/zipWriter.ts` when the browser provides a save-file picker.
 - Multi-volume archives require companion files and are unsupported. The library's WebAssembly heap has a 2 GB ceiling. The worker can temporarily queue data when extraction outruns disk writes.
 - 7-Zip is distributed under the LGPL with the unRAR restriction. [7-Zip license](https://unpkg.com/7z-wasm@1.2.0/License.txt), [unRAR license](https://unpkg.com/7z-wasm@1.2.0/unRarLicense.txt), [build source](https://github.com/use-strict/7z-wasm)
+
+## How the PDF editor works
+
+- Open a PDF, choose a page, then place text, ink, checkmarks, crosses, dots, images, or a drawn, typed, or uploaded signature. Move and resize items in Select mode or use Undo and Redo. Saved signatures stay in this browser when you choose to remember them.
+- Download a new copy. Flattening draws edits into the page. Editable annotations retain their PDF annotation types, including text boxes, ink, and stamps. The original file stays untouched. A signed PDF loses the validity of its digital signature when edited.
+- A worker reads the input on demand and builds the edited output in WASM memory. Very large exports may exceed the browser's available memory.
+- Noto Sans and Dancing Script are distributed under the [SIL Open Font License 1.1](public/pdf-editor-font-licenses.txt) via the MIT-licensed Expo Google Fonts packages. Typed text supports the bundled fonts' Latin, Greek, Cyrillic and Vietnamese coverage. The editor flags unavailable characters when saving. Complex-script shaping and right-to-left layout are outside the current editor's scope.
 
 ## Adding a tool
 

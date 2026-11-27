@@ -16,6 +16,7 @@ const PATHS = {
 	download: "M12 4v12M7 11l5 5 5-5M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2",
 	archive: "M4 3h16v5H4zM5 8v13h14V8M10 12h4",
 	folder: "M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z",
+	pen: "m14 6 4 4M4 20l4.5-1 11-11a2.8 2.8 0 0 0-4-4l-11 11L4 20Z",
 } as const;
 
 export type IconName = keyof typeof PATHS;
