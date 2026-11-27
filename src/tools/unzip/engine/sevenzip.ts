@@ -36,7 +36,7 @@ export async function newSevenZip(
 	return SevenZip(options as unknown as Partial<SevenZipModuleOptions>);
 }
 
-function redirectStdout(module: SevenZipModule, write: Bytes) {
+export function redirectStdout(module: SevenZipModule, write: Bytes) {
 	// The published typings omit these Emscripten methods' runtime signatures.
 	const fs = module.FS as SevenZipModule["FS"] & { getStream(fd: number): FSStream };
 	const device = fs.makedev(99, 0);

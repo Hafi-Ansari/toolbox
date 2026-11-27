@@ -7,7 +7,7 @@ Small, fast tools that run entirely in the browser. No uploads, no accounts, no 
 | **EPUB ⇄ PDF** | `/epub-pdf` | Converts ebooks to PDF and PDFs to ebooks (reflowable text or fixed pages), powered by [MuPDF](https://mupdf.com) compiled to WebAssembly. |
 | **EPUB Reader** | `/read` | A light, dark-mode ebook reader: pages or scrolling, contents, typography settings, and a library of recent books kept on the device. |
 | **PDF → TXT** | `/pdf-txt` | Turns a book of poems or prose into plain text (one verse line or one sentence per line), shown beside the printed page so you can check and edit it before saving. Reads scanned pages with OCR on demand. |
-| **Unzip** | `/unzip` | Browse ZIP, 7z, RAR and other archives, preview text and images, and extract files locally. |
+| **Zip / Unzip** | `/unzip` | Browse ZIP, 7z, RAR and other archives, preview text and images, and extract files locally. Or pack files and folders into a new ZIP, 7z or TAR.GZ, optionally with an AES-256 password. |
 | **PDF Editor** | `/pdf-edit` | Adds text, drawings, marks, signatures and images to PDF pages and downloads a new copy. |
 | **Shared room** | `/room` | A text box all your devices share: make a room, tap it on another device, paste. Rooms are public and end when their creator leaves, or after 2 hours. |
 
@@ -50,12 +50,15 @@ Small, fast tools that run entirely in the browser. No uploads, no accounts, no 
 - **Pagination** uses CSS columns, one per page. Positions are saved as a text anchor, not a page number, so font, width and window changes keep your place.
 - **Library** books live in the Origin Private File System: private to the site, never uploaded, streamed in so large files never sit in memory.
 
-## How Unzip works
+## How Zip / Unzip works
 
 - The tool opens archives in a Web Worker using `7z-wasm`, a WebAssembly build of 7-Zip 24.09. The worker reads file ranges through WORKERFS and streams the extracted bytes. Compressed TAR archives are scanned from the decompressed stream. [7z-wasm 1.2.0](https://www.npmjs.com/package/7z-wasm/v/1.2.0)
 - Choose individual files or folders and preview UTF-8 text or supported images. 7-Zip handles encrypted archives locally. Saved paths have unsafe characters and parent segments removed, and collisions get distinct names.
 - Browsers with a folder picker can stream files into a new subfolder. Other browsers build a download in memory, so available memory limits the size of that output. The ZIP fallback also streams through the shared writer in `src/lib/zipWriter.ts` when the browser provides a save-file picker.
 - Multi-volume archives require companion files and are unsupported. The library's WebAssembly heap has a 2 GB ceiling. The worker can temporarily queue data when extraction outruns disk writes.
+- **Create** packs files and folders (file picker, folder picker, or drag and drop) into ZIP (default), 7z or TAR.GZ. The worker runs `7zz a` over a WORKERFS tree built from the picked `File` objects, so inputs are read in ranges on demand, never copied in whole. The archive is written to a device node that forwards each positioned write (7-Zip patches headers it wrote earlier): Chromium streams it to the file you choose, other browsers collect it in memory and download it, capped at 2 GB. TAR.GZ is 7-Zip's tar stream gzipped by `fflate`. Levels map to `-mx0/1/5/9`; a password gives AES-256 (`-mem=AES256` for ZIP, `-mhe=on` for 7z so names are hidden too). ZIP names carry the UTF-8 flag. Paths keep their folders, are NFC-normalised, and repeated names get a ` (2)` suffix.
+- 7-Zip's own working memory is what grows: ZIP and TAR.GZ stay small, 7z Normal and Max allocate a few hundred MB for the LZMA2 dictionary (the WASM heap tops out at 2 GB). ZIP rewrites an entry that didn't compress and truncates the file, so targets also take truncation.
+- iPhone and iPad Safari can't pick folders, so Create offers files only there.
 - 7-Zip is distributed under the LGPL with the unRAR restriction. [7-Zip license](https://unpkg.com/7z-wasm@1.2.0/License.txt), [unRAR license](https://unpkg.com/7z-wasm@1.2.0/unRarLicense.txt), [build source](https://github.com/use-strict/7z-wasm)
 
 ## How the PDF editor works

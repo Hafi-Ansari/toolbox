@@ -1,9 +1,11 @@
 import * as Comlink from "comlink";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatBytes } from "../../lib/format.ts";
+import { Icon } from "../../lib/Icon.tsx";
 import { Button, Card, Chip, FileDrop, Note, Progress } from "../../lib/ui.tsx";
 import { startWorker, type WorkerHandle } from "../../lib/worker.ts";
 import { ArchiveTree, makeTree } from "./ArchiveTree.tsx";
+import Create from "./Create.tsx";
 import type { Archive } from "./engine/listing.ts";
 import { outputPaths } from "./names.ts";
 import { imageType, MAX_PREVIEW, Preview, type PreviewState, previewContent, TEXT_PREVIEW } from "./Preview.tsx";
@@ -280,7 +282,63 @@ function Workspace({
 	);
 }
 
-export default function Unzip() {
+export default function ZipUnzip() {
+	const [mode, setMode] = useState<"extract" | "create">(() =>
+		new URLSearchParams(window.location.search).get("mode") === "create" ? "create" : "extract",
+	);
+	// Create mounts on first use, so Extract alone never loads a second 7-Zip worker.
+	const [created, setCreated] = useState(mode === "create");
+	return (
+		<div className={s.tool}>
+			<header className={s.heading}>
+				<h1>Zip / Unzip</h1>
+				<p className={s.intro}>
+					Open and extract archives, or pack files and folders into a new one. All in your browser.
+				</p>
+			</header>
+			<div className={s.modes} role="tablist" aria-label="Mode">
+				{(["extract", "create"] as const).map((value) => (
+					<button
+						key={value}
+						type="button"
+						role="tab"
+						id={`mode-${value}`}
+						aria-controls={`panel-${value}`}
+						aria-selected={mode === value}
+						className={s.mode}
+						onClick={() => {
+							setMode(value);
+							if (value === "create") setCreated(true);
+						}}
+					>
+						<Icon name={value === "extract" ? "download" : "archive"} size={16} />
+						{value === "extract" ? "Extract" : "Create"}
+					</button>
+				))}
+			</div>
+			<section
+				id="panel-extract"
+				role="tabpanel"
+				aria-labelledby="mode-extract"
+				hidden={mode !== "extract"}
+				className={s.tool}
+			>
+				<Extract />
+			</section>
+			<section
+				id="panel-create"
+				role="tabpanel"
+				aria-labelledby="mode-create"
+				hidden={mode !== "create"}
+				className={s.tool}
+			>
+				{created && <Create />}
+			</section>
+		</div>
+	);
+}
+
+function Extract() {
 	const [state, setState] = useState<OpenState>({ kind: "idle" });
 	const [input, setInput] = useState("");
 	const worker = useRef<WorkerHandle<UnzipWorker> | null>(null);
@@ -345,11 +403,7 @@ export default function Unzip() {
 	}
 
 	return (
-		<div className={s.tool}>
-			<header className={s.heading}>
-				<h1>Unzip</h1>
-				<p className={s.intro}>Browse, preview, and extract files from archives in your browser.</p>
-			</header>
+		<>
 			{(state.kind === "idle" || state.kind === "error") && (
 				<FileDrop
 					accept={ACCEPT}
@@ -407,6 +461,6 @@ export default function Unzip() {
 				</Card>
 			)}
 			{state.kind === "ready" && <Workspace {...state} connect={connect} restart={spawn} dismiss={reset} />}
-		</div>
+		</>
 	);
 }
