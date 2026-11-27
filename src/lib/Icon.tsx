@@ -14,6 +14,7 @@ const PATHS = {
 	menu: "M4 6h16M4 12h16M4 18h10",
 	text: "M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9l-6-6ZM14 3v6h6M8 13h8M8 17h5",
 	download: "M12 4v12M7 11l5 5 5-5M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2",
+	pen: "m14 6 4 4M4 20l4.5-1 11-11a2.8 2.8 0 0 0-4-4l-11 11L4 20Z",
 } as const;
 
 export type IconName = keyof typeof PATHS;

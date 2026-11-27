@@ -7,6 +7,7 @@ Small, fast tools that run entirely in the browser. No uploads, no accounts, no 
 | **EPUB ⇄ PDF** | `/epub-pdf` | Converts ebooks to PDF and PDFs to ebooks (reflowable text or fixed pages), powered by [MuPDF](https://mupdf.com) compiled to WebAssembly. |
 | **EPUB Reader** | `/read` | A light, dark-mode ebook reader: pages or scrolling, contents, typography settings, and a library of recent books kept on the device. |
 | **PDF → TXT** | `/pdf-txt` | Turns a book of poems or prose into plain text (one verse line or one sentence per line), shown beside the printed page so you can check and edit it before saving. Reads scanned pages with OCR on demand. |
+| **PDF Editor** | `/pdf-edit` | Adds text, drawings, marks, signatures and images to PDF pages and downloads a new copy. |
 
 ## Stack
 
@@ -45,6 +46,13 @@ Small, fast tools that run entirely in the browser. No uploads, no accounts, no 
 - **Untrusted content is inert.** Book scripts, frames, forms, event handlers and `javascript:` URLs are stripped, and the frame's CSP allows no script and no network request, so images and fonts come only from the book itself as `blob:` URLs. The iframe's sandbox does include `allow-scripts`: WebKit (every iPhone browser) runs no event listener in a frame without it, not even the reader's own, so taps and swipes would do nothing there.
 - **Pagination** uses CSS columns, one per page. Positions are saved as a text anchor, not a page number, so font, width and window changes keep your place.
 - **Library** books live in the Origin Private File System: private to the site, never uploaded, streamed in so large files never sit in memory.
+
+## How the PDF editor works
+
+- Open a PDF, choose a page, then place text, ink, checkmarks, crosses, dots, images, or a drawn, typed, or uploaded signature. Move and resize items in Select mode or use Undo and Redo. Saved signatures stay in this browser when you choose to remember them.
+- Download a new copy. Flattening draws edits into the page. Editable annotations retain their PDF annotation types, including text boxes, ink, and stamps. The original file stays untouched. A signed PDF loses the validity of its digital signature when edited.
+- A worker reads the input on demand and builds the edited output in WASM memory. Very large exports may exceed the browser's available memory.
+- Noto Sans and Dancing Script are distributed under the [SIL Open Font License 1.1](public/pdf-editor-font-licenses.txt) via the MIT-licensed Expo Google Fonts packages. Typed text supports the bundled fonts' Latin, Greek, Cyrillic and Vietnamese coverage. The editor flags unavailable characters when saving. Complex-script shaping and right-to-left layout are outside the current editor's scope.
 
 ## Adding a tool
 
