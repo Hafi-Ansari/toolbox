@@ -70,8 +70,17 @@
 }
 
 @media (max-width: 560px) {
+	/* Labels like "Run OCR on the other 75 scanned pages" are wider than a phone's column:
+	   let them wrap, or WebKit widens the whole page to fit them. */
+	.panel,
+	.actions > button {
+		min-width: 0;
+	}
+
 	.actions > button {
 		flex: 1 1 100%;
+		white-space: normal;
+		text-align: center;
 	}
 
 	.running {
