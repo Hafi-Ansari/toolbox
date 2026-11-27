@@ -1,6 +1,6 @@
 # Toolbox
 
-Small, fast tools that run entirely in the browser. No uploads, no accounts, no size limits.
+Small, fast tools that run entirely in the browser. No uploads, no accounts, no size limits. (The one exception is the shared room, whose whole point is to pass text between devices through a server.)
 
 | Tool | Path | What it does |
 |---|---|---|
@@ -9,6 +9,7 @@ Small, fast tools that run entirely in the browser. No uploads, no accounts, no 
 | **PDF → TXT** | `/pdf-txt` | Turns a book of poems or prose into plain text (one verse line or one sentence per line), shown beside the printed page so you can check and edit it before saving. Reads scanned pages with OCR on demand. |
 | **Unzip** | `/unzip` | Browse ZIP, 7z, RAR and other archives, preview text and images, and extract files locally. |
 | **PDF Editor** | `/pdf-edit` | Adds text, drawings, marks, signatures and images to PDF pages and downloads a new copy. |
+| **Shared room** | `/room` | A text box all your devices share: make a room, tap it on another device, paste. Rooms are public and end when their creator leaves, or after 2 hours. |
 
 ## Stack
 
@@ -21,6 +22,7 @@ Small, fast tools that run entirely in the browser. No uploads, no accounts, no 
 | Worker calls | Comlink | Function calls instead of postMessage plumbing |
 | Zip | own writer (`zip.ts`) and reader (`src/lib/zipReader.ts`) | Correct EPUB `mimetype` entry, ZIP64, random access; native `DecompressionStream` for reading |
 | Styling | CSS Modules + `tokens.css` | Zero runtime |
+| Shared room | One Vercel Function (`api/rooms.ts`) + Upstash Redis, polled | Vercel Functions can't hold WebSockets open; a room is tiny state, so polling a key-value store is enough |
 | Tests | Vitest (unit), Playwright (headless e2e) | |
 
 ## How "no size limit" works
@@ -63,6 +65,14 @@ Small, fast tools that run entirely in the browser. No uploads, no accounts, no 
 - A worker reads the input on demand and builds the edited output in WASM memory. Very large exports may exceed the browser's available memory.
 - Noto Sans and Dancing Script are distributed under the [SIL Open Font License 1.1](public/pdf-editor-font-licenses.txt) via the MIT-licensed Expo Google Fonts packages. Typed text supports the bundled fonts' Latin, Greek, Cyrillic and Vietnamese coverage. The editor flags unavailable characters when saving. Complex-script shaping and right-to-left layout are outside the current editor's scope.
 
+## How the shared room works
+
+- **One function, polled.** `api/rooms.ts` is a Vercel Function: list, create, read, write, heartbeat, leave, end. Pages poll it (every second while the text is moving, every 4 s when quiet, not at all in a hidden tab) and only download the text when its version changed.
+- **State in Upstash Redis, shared with other projects.** Every key starts with `toolbox:`, rooms are listed from one sorted set (never by scanning keys), and nothing flushes the database. Credentials come from `ROOM_KV_REST_API_URL` / `ROOM_KV_REST_API_TOKEN` (the names Vercel set when the store was connected).
+- **Rooms end on their own.** The creator's page sends a heartbeat every 20 s; a room lives 2 minutes past the last one. When the creator's page goes away it says so, and the room ends 15 s later unless the page comes back (a reload). No room outlives 2 hours.
+- **Open by design.** Anyone on the site can see and edit any room. Text is capped at 100 KB, writes are rate-limited per IP, and at most 50 rooms exist at once.
+- **Local dev and tests need no database.** `scripts/api-dev.ts` serves `/api/rooms` from `npx vite` and `vite preview` with an in-memory store that mimics Redis, expiry included. With `ROOM_KV_*` set in the environment, the same code talks to Upstash.
+
 ## Adding a tool
 
 1. Create `src/tools/<id>/index.tsx` with a default-export component.
@@ -89,7 +99,7 @@ node scripts/pdf-txt-ocr.ts <file.pdf> poetry|prose [scans|22|20-24] [--flags] [
 
 ## Deploy
 
-Push to GitHub and import the repo in Vercel; it detects Vite automatically. `vercel.json` adds the SPA fallback and long-lived caching for hashed assets, including the WASM.
+Push to GitHub and import the repo in Vercel; it detects Vite automatically. `vercel.json` adds the SPA fallback and long-lived caching for hashed assets, including the WASM. The SPA fallback skips `/api/`, where Vercel serves the shared-room function; it needs the Upstash Redis integration (Storage tab) connected with the `ROOM_` prefix.
 
 `SOURCE_URL` in `src/app/config.ts` points users of the site to this repo, as AGPL-3.0 requires.
 

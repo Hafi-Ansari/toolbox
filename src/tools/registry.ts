@@ -60,4 +60,13 @@ export const tools: ToolMeta[] = [
 		tags: ["PDF", "Sign", "Annotate"],
 		load: () => import("./pdf-edit/index.tsx"),
 	},
+	{
+		id: "room",
+		path: "/room",
+		title: "Shared room",
+		blurb: "A text box all your devices share. Paste a link here, tap it on your phone.",
+		icon: "chat",
+		tags: ["Text", "Sync"],
+		load: () => import("./room/index.tsx"),
+	},
 ];
