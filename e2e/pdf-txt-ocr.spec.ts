@@ -50,6 +50,18 @@ test.describe("PDF → TXT OCR", () => {
 		await expect(text(page)).toHaveValue(/One kettle, dented on the left, two letters I will never send,/);
 	});
 
+	test("on a phone, OCR buttons wrap instead of widening the page", async ({ browser }) => {
+		// WebKit (every iPhone browser) widened the whole page to fit a long unwrapped label
+		// such as "Run OCR on the other 75 scanned pages".
+		const page = await (await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true })).newPage();
+		await open(page, "out/scan.pdf");
+		const button = page.getByRole("button", { name: "Run OCR on 1 scanned page" });
+		await expect(button).toBeVisible();
+		expect(await button.evaluate((b) => getComputedStyle(b).whiteSpace)).toBe("normal");
+		expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
+		await page.context().close();
+	});
+
 	test("OCRs one page of a born-digital book and leaves its text alone", async ({ page }) => {
 		await open(page, "out/poems.pdf");
 		await expect(text(page)).toHaveValue(/^Lantern Weather\n/);

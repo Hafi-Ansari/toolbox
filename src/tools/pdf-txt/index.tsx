@@ -6,6 +6,7 @@ import { Icon } from "../../lib/Icon.tsx";
 import { openSaveTarget } from "../../lib/saveFile.ts";
 import { Button, Card, Chip, FileDrop, Note, Pills, Progress } from "../../lib/ui.tsx";
 import { startWorker, type WorkerHandle } from "../../lib/worker.ts";
+import { currentWork } from "./currentWork.ts";
 import {
 	type Box,
 	type Flag,
@@ -172,7 +173,8 @@ export default function PdfTxtTool() {
 	};
 
 	return (
-		<div className={s.page}>
+		// data-wide-page: on wide screens the site column widens to the workspace (App.module.css).
+		<div className={s.page} data-wide-page={state.kind === "ready" ? "" : undefined}>
 			<header className={s.intro}>
 				<h1>
 					PDF <span className={s.arrow}>→</span> TXT
@@ -290,6 +292,8 @@ function Review({
 	const [edited, setEdited] = useState(false);
 	const [page, setPage] = useState(() => lines[0]?.page ?? 0);
 	const [mark, setMark] = useState<{ box: Box; page: number; tone: "line" | "flag" } | null>(null);
+	/** The work holding the caret, or the one just jumped to: the works menu shows it while it's on screen. */
+	const [caretWork, setCaretWork] = useState<number | null>(null);
 	const [saved, setSaved] = useState<string | null>(null);
 	const area = useRef<HTMLTextAreaElement>(null);
 	const panes = useRef<HTMLDivElement>(null);
@@ -304,6 +308,7 @@ function Review({
 	useEffect(() => {
 		setText(generated);
 		setEdited(false);
+		setCaretWork(null); // work indexes belong to the previous conversion
 	}, [generated]);
 
 	const discardEdits = () =>
@@ -344,6 +349,7 @@ function Review({
 		const src = lines[line];
 		if (!src) return;
 		setPage(src.page);
+		setCaretWork(src.work);
 		setMark(src.box ? { box: src.box, page: src.page, tone: "line" } : null);
 	};
 
@@ -442,6 +448,7 @@ function Review({
 		const w = result.works[index];
 		if (!w) return;
 		setPage(w.page);
+		setCaretWork(index);
 		setMark(w.titleBox ? { box: w.titleBox, page: w.page, tone: "line" } : null);
 		selectLine(lines.findIndex((l) => l.work === index && l.text.trim() !== ""));
 	};
@@ -626,9 +633,7 @@ function Review({
 								<select
 									className={s.jump}
 									aria-label="Go to work"
-									value={String(
-										result.works.findIndex((w) => page >= w.page && page <= w.endPage && w.kind !== "matter"),
-									)}
+									value={String(currentWork(result.works, page, { matter: options.matter, preferred: caretWork }))}
 									onChange={(e) => showWork(Number(e.target.value))}
 								>
 									<option value="-1" disabled>

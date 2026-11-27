@@ -26,7 +26,8 @@
 /* ---------- Stage + page frame */
 .stage {
 	position: absolute;
-	inset: 0;
+	/* The book stays clear of the notch and home bar (the reader's background still fills them). */
+	inset: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 	overflow: hidden;
 	/* Taps and sideways swipes are the reader's (see readerCss.ts TOUCH). */
 	touch-action: pan-y pinch-zoom;
@@ -386,12 +387,13 @@
 	border-width: 0 1px 0 0;
 	padding-top: env(safe-area-inset-top);
 	padding-bottom: env(safe-area-inset-bottom);
+	padding-left: env(safe-area-inset-left);
 	animation: slideIn 220ms var(--ease);
 }
 
 .settings {
 	top: calc(env(safe-area-inset-top) + var(--bar-h) + 8px);
-	right: 12px;
+	right: max(12px, env(safe-area-inset-right));
 	width: min(380px, calc(100vw - 24px));
 	max-height: calc(100dvh - var(--bar-h) - 32px);
 	border-radius: 16px;

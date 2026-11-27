@@ -24,17 +24,30 @@ function coverage(bbox: number[], bounds: number[]): number {
 	return w > 0 && h > 0 && area > 0 ? (w * h) / area : 0;
 }
 
-/** True when a page has almost no ink: a blank leaf of a scanned book, show-through and all. */
+/**
+ * True when a page has almost no ink: a blank leaf of a scanned book, show-through and all.
+ * Rendered at full size (72 dpi): smaller renders blur small print into the paper tone, which
+ * made scanned pages of small type look blank (they then never got offered for OCR). Ink is
+ * what is much darker than the paper (its 90th-percentile tone): show-through never is.
+ * Measured: real blank leaves 0 inked pixels per 10,000, a small-print poem scan 46.
+ */
 export function isBlankPage(page: mupdf.Page): boolean {
-	const pix = page.toPixmap(mupdf.Matrix.scale(0.25, 0.25), mupdf.ColorSpace.DeviceGray, false, true);
+	const pix = page.toPixmap(mupdf.Matrix.identity, mupdf.ColorSpace.DeviceGray, false, true);
 	try {
 		const px = pix.getPixels();
-		let sum = 0;
-		for (const v of px) sum += v;
-		const paper = sum / px.length;
+		const hist = new Uint32Array(256);
+		for (const v of px) hist[v]++;
+		let paper = 255;
+		for (let v = 0, seen = 0; v < 256; v++) {
+			seen += hist[v];
+			if (seen >= px.length * 0.9) {
+				paper = v;
+				break;
+			}
+		}
 		let ink = 0;
-		for (const v of px) if (v < paper - 60) ink++;
-		return ink / px.length < 0.0005;
+		for (let v = 0; v < paper - 80; v++) ink += hist[v];
+		return ink / px.length < 0.0002;
 	} finally {
 		pix.destroy();
 	}
