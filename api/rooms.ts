@@ -50,8 +50,26 @@ export interface Kv {
 	zrem(key: string, member: string): Promise<unknown>;
 	zrangeAll(key: string): Promise<string[]>;
 	zremrangebyscore(key: string, min: number, max: number): Promise<unknown>;
-	zcount(key: string, min: number, max: number): Promise<number>;
+	/** `max` may be "+inf" (Infinity can't be sent: JSON turns it into null). */
+	zcount(key: string, min: number, max: number | "+inf"): Promise<number>;
 	incr(key: string): Promise<number>;
+}
+
+/** HMGET's raw reply (values in field order) as an object; null when the hash doesn't exist. */
+export function hashFromValues(
+	fields: string[],
+	values: (string | null)[] | null,
+): Record<string, string | null> | null {
+	if (!values || values.every((v) => v === null)) return null;
+	return Object.fromEntries(fields.map((f, i) => [f, values[i] ?? null]));
+}
+
+/** HGETALL's raw reply ([field, value, field, value, …]) as an object; null when the hash doesn't exist. */
+export function hashFromFlat(flat: (string | null)[] | null): Record<string, string> | null {
+	if (!flat?.length) return null;
+	const out: Record<string, string> = {};
+	for (let i = 0; i + 1 < flat.length; i += 2) out[String(flat[i])] = String(flat[i + 1] ?? "");
+	return out;
 }
 
 /** Upstash Redis through its REST API. Concurrent calls are auto-pipelined into one request. */
@@ -60,8 +78,10 @@ export function redisKv(url: string, token: string): Kv {
 	const r = new Redis({ url, token, automaticDeserialization: false });
 	return {
 		hset: (key, fields) => r.hset(key, fields),
-		hgetall: (key) => r.hgetall<Record<string, string>>(key),
-		hmget: (key, ...fields) => r.hmget<Record<string, string | null>>(key, ...fields),
+		// Without automatic deserialization the SDK returns these two as raw Redis arrays.
+		hgetall: async (key) => hashFromFlat((await r.hgetall(key)) as unknown as (string | null)[] | null),
+		hmget: async (key, ...fields) =>
+			hashFromValues(fields, (await r.hmget(key, ...fields)) as unknown as (string | null)[] | null),
 		hincrby: (key, field, by) => r.hincrby(key, field, by),
 		expire: (key, s) => r.expire(key, s),
 		del: (...keys) => r.del(...keys),
@@ -169,7 +189,8 @@ export function memoryKv(now: () => number = Date.now): Kv {
 		async zcount(key, min, max) {
 			if (!alive(key)) return 0;
 			let n = 0;
-			for (const s of zsets.get(key)?.values() ?? []) if (s >= min && s <= max) n++;
+			const hi = max === "+inf" ? Number.POSITIVE_INFINITY : max;
+			for (const s of zsets.get(key)?.values() ?? []) if (s >= min && s <= hi) n++;
 			return n;
 		},
 		async incr(key) {
@@ -269,7 +290,7 @@ export class Rooms {
 			ids.map(async (id) => {
 				const [h, here] = await Promise.all([
 					this.kv.hmget(K.room(id), "name", "emoji", "created"),
-					this.kv.zcount(K.seen(id), now - HERE_MS, Number.POSITIVE_INFINITY),
+					this.kv.zcount(K.seen(id), now - HERE_MS, "+inf"),
 				]);
 				const created = Number(h?.created);
 				if (!h?.name || !created || now - created > MAX_AGE_MS) {

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
 	handle,
+	hashFromFlat,
+	hashFromValues,
 	type Kv,
 	LEAVE_TTL_S,
 	MAX_AGE_MS,
@@ -160,5 +162,21 @@ describe("shared rooms", () => {
 		await call("PUT", `?id=${room.id}`, { text: "hi" });
 		await call("POST", `?id=${room.id}`, { action: "end", token });
 		expect([...keys].every((k) => k.startsWith("toolbox:"))).toBe(true);
+	});
+});
+
+describe("raw Redis replies", () => {
+	// @upstash/redis with automaticDeserialization: false returns HMGET and HGETALL as arrays.
+	it("turns HMGET's values-in-order into an object, and a missing hash into null", () => {
+		expect(hashFromValues(["ver", "created"], ["0", "1795744514002"])).toEqual({ ver: "0", created: "1795744514002" });
+		expect(hashFromValues(["ver", "text"], ["3", null])).toEqual({ ver: "3", text: null });
+		expect(hashFromValues(["ver", "created"], [null, null])).toBeNull();
+		expect(hashFromValues(["ver"], null)).toBeNull();
+	});
+
+	it("turns HGETALL's flat field/value list into an object", () => {
+		expect(hashFromFlat(["name", "Daring Turtle", "text", "123"])).toEqual({ name: "Daring Turtle", text: "123" });
+		expect(hashFromFlat([])).toBeNull();
+		expect(hashFromFlat(null)).toBeNull();
 	});
 });
