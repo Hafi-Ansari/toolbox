@@ -61,7 +61,11 @@ export default function PdfEditorTool() {
 	}
 
 	return (
-		<div className={state.kind === "ready" ? `${s.page} ${s.ready}` : s.page}>
+		// data-wide-page="medium": on wide screens the site column widens to the editor (App.module.css).
+		<div
+			className={state.kind === "ready" ? `${s.page} ${s.ready}` : s.page}
+			data-wide-page={state.kind === "ready" ? "medium" : undefined}
+		>
 			<header className={s.intro}>
 				<h1>PDF Editor</h1>
 				{state.kind !== "ready" && (

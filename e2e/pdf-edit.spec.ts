@@ -318,3 +318,20 @@ test.describe("390px mobile with touch", () => {
 		expect(errors).toEqual([]);
 	});
 });
+
+test("on a wide screen, the site column widens to the editor so everything shares one left edge", async ({
+	browser,
+}) => {
+	const page = await (await browser.newContext({ viewport: { width: 1600, height: 1000 } })).newPage();
+	await page.goto("/pdf-edit");
+	expect((await page.locator("main").boundingBox())?.width).toBe(960);
+	await page.locator('input[type="file"]').setInputFiles("out/edit.pdf");
+	await expect(page.getByRole("button", { name: /Download PDF/ })).toBeVisible({ timeout: 30_000 });
+	const card = await page.locator("main [class*=_panel_]").first().boundingBox();
+	const x = async (selector: string) => Math.round((await page.locator(selector).first().boundingBox())?.x ?? -1);
+	expect(await x("header a")).toBe(Math.round(card?.x ?? 0));
+	expect(await x("h1")).toBe(Math.round(card?.x ?? 0));
+	expect(Math.round(card?.width ?? 0)).toBe(1340);
+	expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
+	await page.context().close();
+});

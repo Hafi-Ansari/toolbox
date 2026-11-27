@@ -992,13 +992,6 @@ fieldset.field {
 	border-color: var(--border-strong);
 }
 
-@media (min-width: 1050px) {
-	.ready {
-		width: min(1340px, calc(100vw - 64px));
-		margin-inline: calc((100% - min(1340px, calc(100vw - 64px))) / 2);
-	}
-}
-
 @media (max-width: 860px) {
 	.ready {
 		padding-bottom: calc(154px + env(safe-area-inset-bottom));
