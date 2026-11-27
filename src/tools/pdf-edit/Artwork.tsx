@@ -16,18 +16,18 @@ import {
 } from "./items.ts";
 import s from "./PdfEdit.module.css";
 
-export function describeItem(item: Item): string {
+export function describeItem(item: Item, page: number): string {
 	switch (item.kind) {
 		case "text":
-			return `Text box: ${item.text.slice(0, 36) || "Empty"}, page ${item.page + 1}`;
+			return `Text box: ${item.text.slice(0, 36) || "Empty"}, page ${page}`;
 		case "ink":
-			return `Ink, page ${item.page + 1}`;
+			return `Ink, page ${page}`;
 		case "mark":
-			return `${item.shape[0].toUpperCase() + item.shape.slice(1)} mark, page ${item.page + 1}`;
+			return `${item.shape[0].toUpperCase() + item.shape.slice(1)} mark, page ${page}`;
 		case "signature":
-			return `Signature, page ${item.page + 1}`;
+			return `Signature, page ${page}`;
 		case "image":
-			return `Image, page ${item.page + 1}`;
+			return `Image, page ${page}`;
 	}
 }
 

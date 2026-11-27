@@ -23,7 +23,7 @@ afterAll(() => {
 	fonts.script.destroy();
 });
 
-const common = { page: 1, x: 40, y: 40, w: 110, h: 34, color: "#000000" };
+const common = { page: "p1", x: 40, y: 40, w: 110, h: 34, color: "#000000" };
 const text: Item = { ...common, id: "text", kind: "text", text: "Čaj Ω", size: 18, lines: ["Čaj Ω"] };
 const items: Item[] = [
 	text,
@@ -41,7 +41,7 @@ const items: Item[] = [
 		],
 	},
 	{ ...common, id: "image", kind: "image", y: 140, w: 80, h: 50, key: "orange", natW: 16, natH: 10 },
-	{ ...common, id: "signature", kind: "signature", page: 0, source: { kind: "typed", text: "Ada Moss" } },
+	{ ...common, id: "signature", kind: "signature", page: "p0", source: { kind: "typed", text: "Ada Moss" } },
 	{ ...common, id: "mark", kind: "mark", shape: "check", y: 200, w: 26, h: 26 },
 	{ ...common, id: "dot", kind: "mark", shape: "dot", y: 240, w: 26, h: 26 },
 	{
@@ -71,6 +71,13 @@ const items: Item[] = [
 	},
 ];
 
+/** Groups items by page id "p<index>" into the per-page lists applyItems takes. */
+function byPage(list: Item[]): Item[][] {
+	const pages: Item[][] = [[], [], []];
+	for (const item of list) pages[Number(item.page.slice(1))].push(item);
+	return pages;
+}
+
 function readback(doc: mupdf.PDFDocument, options = "compress") {
 	const buffer = doc.saveToBuffer(options);
 	try {
@@ -97,7 +104,7 @@ it.each(["flatten", "annotations"] as const)(
 		before.update();
 		before.destroy();
 
-		expect(applyItems(source, items, fonts, { orange: testImage() }, mode)).toEqual([]);
+		expect(applyItems(source, byPage(items), fonts, { orange: testImage() }, mode)).toEqual([]);
 		const result = readback(source);
 		try {
 			const first = result.loadPage(0);
@@ -174,7 +181,7 @@ it("retains encryption on an edited password protected PDF and reports unsupport
 	expect(encrypted.needsPassword()).toBe(true);
 	expect(encrypted.authenticatePassword("incorrect")).toBe(0);
 	expect(encrypted.authenticatePassword(password)).toBeGreaterThan(0);
-	expect(applyItems(encrypted, [{ ...text, text: "字", lines: ["字"] }], fonts, {}, "flatten")).toEqual(["字"]);
+	expect(applyItems(encrypted, byPage([{ ...text, text: "字", lines: ["字"] }]), fonts, {}, "flatten")).toEqual(["字"]);
 	const result = readback(encrypted);
 	expect(result.needsPassword()).toBe(true);
 	expect(result.authenticatePassword(password)).toBeGreaterThan(0);

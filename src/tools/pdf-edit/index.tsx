@@ -6,6 +6,7 @@ import { Button, Card, Chip, FileDrop, Note, Progress } from "../../lib/ui.tsx";
 import { startWorker, type WorkerHandle } from "../../lib/worker.ts";
 import { Editor } from "./Editor.tsx";
 import type { EditApi, OpenDocument } from "./edit.worker.ts";
+import { Password } from "./Password.tsx";
 import s from "./PdfEdit.module.css";
 
 type State =
@@ -14,36 +15,6 @@ type State =
 	| { kind: "locked"; file: File; previous: boolean }
 	| { kind: "error"; file: File; message: string }
 	| { kind: "ready"; file: File; doc: OpenDocument; api: Remote<EditApi> };
-
-function Password({
-	file,
-	previous,
-	open,
-}: {
-	file: File;
-	previous: boolean;
-	open: (file: File, password: string) => void;
-}) {
-	const [password, setPassword] = useState("");
-	return (
-		<form
-			className={s.password}
-			onSubmit={(e) => {
-				e.preventDefault();
-				open(file, password);
-			}}
-		>
-			{previous && <Note tone="danger">Incorrect PDF password. Try again.</Note>}
-			<label>
-				PDF password{" "}
-				<input type="password" autoComplete="off" value={password} onChange={(e) => setPassword(e.target.value)} />
-			</label>
-			<Button type="submit" icon="lock">
-				Unlock PDF
-			</Button>
-		</form>
-	);
-}
 
 export default function PdfEditorTool() {
 	const [state, setState] = useState<State>({ kind: "idle" });

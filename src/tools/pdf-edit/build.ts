@@ -277,22 +277,18 @@ function annotatePage(
 	}
 }
 
+/** Places items on the document's pages. `pages[i]` holds the items for page `i`. */
 export function applyItems(
 	doc: mupdf.PDFDocument,
-	items: Item[],
+	pages: Item[][],
 	fonts: Fonts,
 	images: ImageDataMap,
 	mode: Mode,
 ): string[] {
-	const pages = new Map<number, Item[]>();
-	for (const item of items) {
-		if (item.kind === "text" && !item.text.trim()) continue;
-		const group = pages.get(item.page);
-		if (group) group.push(item);
-		else pages.set(item.page, [item]);
-	}
 	const unsupported = new Set<string>();
-	for (const [index, group] of pages) {
+	for (const [index, list] of pages.entries()) {
+		const group = list.filter((item) => item.kind !== "text" || item.text.trim());
+		if (!group.length) continue;
 		const page = doc.loadPage(index);
 		try {
 			if (mode === "flatten") flattenPage(doc, page, group, fonts, images, unsupported);

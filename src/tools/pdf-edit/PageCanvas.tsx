@@ -1,7 +1,15 @@
-import { type KeyboardEvent, type PointerEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+	type KeyboardEvent,
+	type PointerEvent,
+	type ReactNode,
+	useEffect,
+	useLayoutEffect,
+	useRef,
+	useState,
+} from "react";
 import { Artwork, boxStyle, describeItem, StrokeArt } from "./Artwork.tsx";
 import { SANS } from "./fonts.ts";
-import { type Point, screenToPage } from "./geometry.ts";
+import type { Point } from "./geometry.ts";
 import type { Asset } from "./images.ts";
 import {
 	clamp,
@@ -16,7 +24,8 @@ import {
 	type Tool,
 } from "./items.ts";
 import s from "./PdfEdit.module.css";
-import { type RenderPage, usePageImage } from "./render.ts";
+import { shownSize, unrotateFraction } from "./pages.ts";
+import { type PageKey, type RenderPage, usePageImage } from "./render.ts";
 
 type Drag =
 	| { id: number; kind: "place"; point: Point }
@@ -31,7 +40,13 @@ export interface TextDraft {
 
 interface Props {
 	page: PageSize;
-	index: number;
+	/** Rotation added in the editor; the sheet is turned and pointer input is mapped back. */
+	rotate: number;
+	pageKey: PageKey;
+	/** 1-based position in the document, for labels. */
+	number: number;
+	/** Drawn above the page image and below the items (form field highlights). */
+	children?: ReactNode;
 	zoom: number;
 	items: Item[];
 	assets: Record<string, Asset>;
@@ -102,16 +117,17 @@ function DraftText({
 }
 
 export function PageCanvas(p: Props) {
-	const { page, index, items, assets, tool, selected, draft } = p;
+	const { page, rotate, number, items, assets, tool, selected, draft } = p;
 	const frame = useRef<HTMLDivElement>(null);
 	const drag = useRef<Drag | null>(null);
 	const [fit, setFit] = useState({ width: 0, dpr: 1 });
 	const [ghost, setGhost] = useState<Item | null>(null);
 	const [ink, setInk] = useState<Point[]>([]);
 	const [erased, setErased] = useState<Set<string>>(new Set());
+	const shown = shownSize(page, rotate);
 	const width = Math.floor(fit.width * p.zoom);
-	const scale = width / page.w;
-	const image = usePageImage(p.render, index, width, fit.dpr);
+	const scale = width / shown.w;
+	const image = usePageImage(p.render, p.pageKey, Math.round(page.w * scale), fit.dpr);
 
 	useLayoutEffect(() => {
 		const element = frame.current;
@@ -137,9 +153,10 @@ export function PageCanvas(p: Props) {
 	}, []);
 
 	function point(e: PointerEvent<HTMLDivElement>): Point {
+		// The bounding box of a turned sheet is its shown box; map the fraction back onto the page.
 		const box = e.currentTarget.getBoundingClientRect();
-		const [x, y] = screenToPage([e.clientX, e.clientY], { left: box.left, top: box.top, scale: box.width / page.w });
-		return [clamp(x, 0, page.w), clamp(y, 0, page.h)];
+		const [u, v] = unrotateFraction([(e.clientX - box.left) / box.width, (e.clientY - box.top) / box.height], rotate);
+		return [clamp(u * page.w, 0, page.w), clamp(v * page.h, 0, page.h)];
 	}
 
 	function erasures(previous: Set<string>, at: Point) {
@@ -254,70 +271,85 @@ export function PageCanvas(p: Props) {
 
 	return (
 		<div className={s.frame} ref={frame}>
-			<div
-				className={s.sheet}
-				data-tool={tool}
-				data-testid="pdf-edit-page"
-				aria-busy={!image}
-				style={{ width: width || undefined, aspectRatio: `${page.w} / ${page.h}` }}
-				onPointerDown={start}
-				onPointerMove={move}
-				onPointerUp={finish}
-				onPointerCancel={(e) => finish(e, true)}
-				onLostPointerCapture={(e) => finish(e, true)}
-			>
-				{image?.url && <img className={s.paper} src={image.url} alt={`Page ${index + 1}`} draggable={false} />}
-				{image?.failed && <p className={s.renderError}>This page could not be drawn.</p>}
-				{items.map((saved) => {
-					if (erased.has(saved.id) || saved.id === draft?.item.id) return null;
-					const item = ghost?.id === saved.id ? ghost : saved;
-					const focus = selected === item.id && tool === "select";
-					return (
-						<div key={item.id} className={s.item} style={boxStyle(item, page)} data-selected={focus || undefined}>
-							<button
-								type="button"
-								className={s.cover}
-								data-edit-item={item.id}
-								aria-label={describeItem(item)}
-								tabIndex={tool === "select" ? 0 : -1}
-								onClick={(e) => {
-									if (e.detail === 0) p.select(item.id);
-								}}
-								onFocus={() => {
-									if (tool === "select") p.select(item.id);
-								}}
-								onDoubleClick={() => {
-									if (tool === "select" && item.kind === "text") p.edit(item);
-								}}
-								onKeyDown={(e) => keyItem(e, item)}
-							>
-								<Artwork item={item} assets={assets} />
-							</button>
-							{focus && (
+			<div className={s.turn} style={{ width: width || undefined, aspectRatio: `${shown.w} / ${shown.h}` }}>
+				<div
+					className={s.sheet}
+					data-tool={tool}
+					data-testid="pdf-edit-page"
+					aria-busy={!image}
+					style={
+						rotate
+							? {
+									width: page.w * scale,
+									height: page.h * scale,
+									left: "50%",
+									top: "50%",
+									transform: `translate(-50%, -50%) rotate(${rotate}deg)`,
+								}
+							: undefined
+					}
+					onPointerDown={start}
+					onPointerMove={move}
+					onPointerUp={finish}
+					onPointerCancel={(e) => finish(e, true)}
+					onLostPointerCapture={(e) => finish(e, true)}
+				>
+					{image?.url && <img className={s.paper} src={image.url} alt={`Page ${number}`} draggable={false} />}
+					{image?.failed && <p className={s.renderError}>This page could not be drawn.</p>}
+					{p.children}
+					{items.map((saved) => {
+						if (erased.has(saved.id) || saved.id === draft?.item.id) return null;
+						const item = ghost?.id === saved.id ? ghost : saved;
+						const focus = selected === item.id && tool === "select";
+						return (
+							<div key={item.id} className={s.item} style={boxStyle(item, page)} data-selected={focus || undefined}>
 								<button
 									type="button"
+									className={s.cover}
 									data-edit-item={item.id}
-									data-resize="true"
-									className={s.resize}
-									aria-label={`Resize ${describeItem(item)}`}
-									tabIndex={-1}
-								/>
-							)}
-						</div>
-					);
-				})}
-				{ink.length > 0 && (
-					<svg aria-hidden="true" className={s.drawing} viewBox={`0 0 ${page.w} ${page.h}`}>
-						<StrokeArt
-							strokes={[ink.map(([x, y]) => [x / page.w, y / page.h])]}
-							w={page.w}
-							h={page.h}
-							color={p.color}
-							width={p.strokeWidth}
-						/>
-					</svg>
-				)}
-				{draft && <DraftText draft={draft} page={page} scale={scale} typeText={p.typeText} finishText={p.finishText} />}
+									aria-label={describeItem(item, number)}
+									tabIndex={tool === "select" ? 0 : -1}
+									onClick={(e) => {
+										if (e.detail === 0) p.select(item.id);
+									}}
+									onFocus={() => {
+										if (tool === "select") p.select(item.id);
+									}}
+									onDoubleClick={() => {
+										if (tool === "select" && item.kind === "text") p.edit(item);
+									}}
+									onKeyDown={(e) => keyItem(e, item)}
+								>
+									<Artwork item={item} assets={assets} />
+								</button>
+								{focus && (
+									<button
+										type="button"
+										data-edit-item={item.id}
+										data-resize="true"
+										className={s.resize}
+										aria-label={`Resize ${describeItem(item, number)}`}
+										tabIndex={-1}
+									/>
+								)}
+							</div>
+						);
+					})}
+					{ink.length > 0 && (
+						<svg aria-hidden="true" className={s.drawing} viewBox={`0 0 ${page.w} ${page.h}`}>
+							<StrokeArt
+								strokes={[ink.map(([x, y]) => [x / page.w, y / page.h])]}
+								w={page.w}
+								h={page.h}
+								color={p.color}
+								width={p.strokeWidth}
+							/>
+						</svg>
+					)}
+					{draft && (
+						<DraftText draft={draft} page={page} scale={scale} typeText={p.typeText} finishText={p.finishText} />
+					)}
+				</div>
 			</div>
 		</div>
 	);
