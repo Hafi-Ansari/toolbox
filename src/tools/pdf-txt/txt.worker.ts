@@ -36,28 +36,6 @@ function throttled(progress: Progress): Progress {
 	};
 }
 
-/** True when a page is covered by one picture (as a scan is). */
-function pictureOnly(open: mupdf.Document, index: number): boolean {
-	const page = open.loadPage(index);
-	try {
-		const [x0, y0, x1, y1] = page.getBounds();
-		const area = (x1 - x0) * (y1 - y0);
-		let covered = false;
-		const st = page.toStructuredText("preserve-images");
-		st.walk({
-			onImageBlock(bbox) {
-				const w = Math.min(bbox[2], x1) - Math.max(bbox[0], x0);
-				const h = Math.min(bbox[3], y1) - Math.max(bbox[1], y0);
-				if (w > 0 && h > 0 && (w * h) / area >= 0.85) covered = true;
-			},
-		});
-		st.destroy();
-		return covered;
-	} finally {
-		page.destroy();
-	}
-}
-
 let doc: mupdf.Document | null = null;
 let book: { pages: PageModel[]; outline: OutlineEntry[] } | null = null;
 /** OCR results by page, kept so every conversion of this book includes them. */
@@ -133,12 +111,11 @@ const api = {
 	 */
 	scanPages(): { pages: number[]; textless: number } {
 		if (!doc || !book) return { pages: [], textless: 0 };
-		const open = doc;
 		const textless = (p: PageModel) => !p.blocks.some((b) => b.kind === "text" && b.lines.length);
 		return {
-			pages: book.pages
-				.filter((p) => p.ocr || p.imageOnly || (textless(p) && pictureOnly(open, p.index)))
-				.map((p) => p.index),
+			// Scans with a text layer, and scans without one. Blank leaves are neither (isBlankPage),
+			// so they're not sent to OCR.
+			pages: book.pages.filter((p) => p.ocr || p.imageOnly).map((p) => p.index),
 			/** Pages with no text at all: all of them means a scanned book without a text layer. */
 			textless: book.pages.filter(textless).length,
 		};
