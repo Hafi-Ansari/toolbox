@@ -3,6 +3,7 @@
 import * as Comlink from "comlink";
 import * as mupdf from "mupdf";
 import { blockCachedHandle } from "../../lib/pdf/fileStream.ts";
+import { batchingSink } from "../../lib/zipWriter.ts";
 import {
 	type EpubToPdfOptions,
 	epubToPdf,
@@ -12,7 +13,6 @@ import {
 	type Progress,
 	pdfToEpub,
 } from "./engine/convert.ts";
-import { batchingSink } from "./engine/zip.ts";
 
 // Worker-only API (the "webworker" lib can't be mixed with "dom" in one program).
 declare class FileReaderSync {

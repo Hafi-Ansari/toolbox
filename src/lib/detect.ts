@@ -1,5 +1,17 @@
 // Identify a file by its first bytes, never by its extension.
-export type DetectedFormat = "pdf" | "epub" | "zip" | "unknown";
+export type DetectedFormat =
+	| "pdf"
+	| "epub"
+	| "zip"
+	| "7z"
+	| "rar"
+	| "gzip"
+	| "bzip2"
+	| "xz"
+	| "zstd"
+	| "cab"
+	| "tar"
+	| "unknown";
 
 const ascii = (bytes: Uint8Array, start: number, end: number) => String.fromCharCode(...bytes.subarray(start, end));
 
@@ -18,6 +30,16 @@ export function detectBytes(head: Uint8Array): DetectedFormat {
 		if (ascii(head, 0, head.length).includes("application/epub+zip")) return "epub";
 		return "zip";
 	}
+	const starts = (...magic: number[]) => magic.every((byte, i) => head[i] === byte);
+	if (starts(0x50, 0x4b, 0x05, 0x06)) return "zip";
+	if (starts(0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c)) return "7z";
+	if (starts(0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 0) || starts(0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 1, 0)) return "rar";
+	if (starts(0x1f, 0x8b, 0x08)) return "gzip";
+	if (text.startsWith("BZh")) return "bzip2";
+	if (starts(0xfd, 0x37, 0x7a, 0x58, 0x5a, 0)) return "xz";
+	if (starts(0x28, 0xb5, 0x2f, 0xfd)) return "zstd";
+	if (text.startsWith("MSCF")) return "cab";
+	if (text.slice(257, 262) === "ustar") return "tar";
 	return "unknown";
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ZipWriter } from "../tools/epub-pdf/engine/zip.ts";
 import { ZipReader } from "./zipReader.ts";
+import { ZipWriter } from "./zipWriter.ts";
 
 function build(add: (z: ZipWriter) => void): Blob {
 	const parts: Uint8Array<ArrayBuffer>[] = [];

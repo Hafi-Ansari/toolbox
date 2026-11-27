@@ -57,4 +57,5 @@ export default function setup() {
 	stubbornEpub("out/stubborn.epub");
 	poemsPdf("out/poems.pdf");
 	scanPdf("out/scan.pdf");
+	return import("./archives.ts").then(({ archiveFixtures }) => archiveFixtures());
 }
