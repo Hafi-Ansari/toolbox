@@ -160,7 +160,8 @@ export function FileTransferApp({ deps }: { deps: FtDeps }) {
 		const offSession = session.on((e) => {
 			if (e.type !== "closed") return;
 			engine.dispose();
-			void presence?.endSession().catch(() => {});
+			// Not closed by us: the other side may have left without telling the server (iOS tab close).
+			void presence?.endSession(e.reason !== "local").catch(() => {});
 			pairStarted.current = null;
 			setBatches((b) => ({ ...b, offer: null }));
 			if (e.reason === "local") setConn({ phase: "none" });

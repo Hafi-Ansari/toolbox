@@ -188,6 +188,11 @@ export const SERVER = {
 	rateTtlS: 90,
 	/** A peer field is stale this long after `seen`. */
 	peerStaleMs: 150_000,
+	/**
+	 * `release` with `gone`: the other end of the session may have closed its tab without `leave`. Its
+	 * entry then goes stale this long after the release unless it polls again (every 10 s when connected).
+	 */
+	peerGoneGraceMs: 20_000,
 	/** `pending` and `accepted` claims expire this long after `at`. */
 	claimMs: 30_000,
 	/** A `connected` claim expires this long after the target's last poll. */

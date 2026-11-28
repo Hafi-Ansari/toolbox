@@ -75,6 +75,7 @@ function setup() {
 const A = id(0xa);
 const B = id(0xb);
 const C = id(0xc);
+const D = id(0xd);
 
 async function connect(h: ReturnType<typeof setup>, from = A, to = B) {
 	await h.poll(from);
@@ -414,6 +415,37 @@ describe("file transfer server: requests", () => {
 		expect(a.outgoing).toBeNull();
 		expect(a.peers[0].busy).toBe(false);
 		expect((await h.call("release", A, { pair })).json).toEqual({ ok: true });
+	});
+
+	it("release with gone: the other end shows free, and goes 20 s later unless it polls", async () => {
+		const h = setup();
+		const pair = await connect(h);
+		await h.call("connected", A, { pair });
+		await h.poll(B, { busy: true });
+		await h.poll(A, { busy: true });
+		// B's tab was closed without leave (iOS); A's session ends by loss.
+		expect((await h.call("release", A, { pair, gone: true })).json).toEqual({ ok: true });
+		const seen = (await h.poll(A)).peers.find((p) => p.id === B);
+		expect(seen?.busy).toBe(false);
+		h.advance(SERVER.peerGoneGraceMs + 1000);
+		expect((await h.poll(A)).peers.some((p) => p.id === B)).toBe(false);
+
+		// A live page polls within the grace and stays listed.
+		const pair2 = await connect(h, A, C);
+		await h.call("release", A, { pair: pair2, gone: true });
+		h.advance(SERVER.peerGoneGraceMs - 5000);
+		await h.poll(C);
+		h.advance(10_000);
+		expect((await h.poll(A)).peers.some((p) => p.id === C)).toBe(true);
+
+		// Only the ends of the pair can do this to each other.
+		const pair3 = await connect(h, A, C);
+		await h.poll(D);
+		await h.call("release", D, { pair: pair3, gone: true });
+		h.advance(SERVER.peerGoneGraceMs + 1000);
+		await h.poll(C);
+		await h.poll(A);
+		expect((await h.poll(D)).peers.map((p) => p.id).sort()).toEqual([A, C].sort());
 	});
 
 	it("rate-limits request, respond and signal per IP: 60 a minute", async () => {

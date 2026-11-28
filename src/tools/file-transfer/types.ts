@@ -112,7 +112,8 @@ export interface ApiBodies {
 	/** Sets the claim state to `connected` (after lane 0 opens). */
 	connected: { pair: PairId };
 	/** Either side; deletes the claim. Also cancels my own pending request. */
-	release: { pair: PairId };
+	/** `gone`: the session ended by bye or loss, so the other end may have left without `leave`. */
+	release: { pair: PairId; gone?: boolean };
 	signal: { pair: PairId; to: PeerId; payload: SignalMessage };
 	/** `GETDEL` of my mailbox for this pair. */
 	read: { pair: PairId };
@@ -317,8 +318,11 @@ export interface Presence {
 	respond(accept: boolean): Promise<void>;
 	/** Lane 0 open: claim → `connected`, state → `connected`, polls keep `busy`. */
 	markConnected(): Promise<void>;
-	/** Session over (or handshake failed): `release` the claim, back to normal polling. */
-	endSession(): Promise<void>;
+	/**
+	 * Session over (or handshake failed): `release` the claim, back to normal polling. `remoteGone`: the
+	 * other side said bye or went silent, so it may have closed its tab without `leave` (`release.gone`).
+	 */
+	endSession(remoteGone?: boolean): Promise<void>;
 	/** Leave `away` ("Be visible again"). */
 	wake(): void;
 	/** Stop polling and send `leave`. */

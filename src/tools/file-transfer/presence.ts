@@ -394,7 +394,7 @@ export function createPresence(opts: PresenceOptions): Presence {
 			schedule();
 			await api.call("connected", { pair: h.pair }).catch(() => {});
 		},
-		async endSession() {
+		async endSession(remoteGone = false) {
 			const h = snap.handshake;
 			if (!h) return;
 			ended.add(h.pair);
@@ -403,7 +403,7 @@ export function createPresence(opts: PresenceOptions): Presence {
 			lastInteraction = env.now();
 			emit({ handshake: null });
 			schedule();
-			await api.call("release", { pair: h.pair }).catch(() => {});
+			await api.call("release", remoteGone ? { pair: h.pair, gone: true } : { pair: h.pair }).catch(() => {});
 		},
 		wake() {
 			if (!away) return;
