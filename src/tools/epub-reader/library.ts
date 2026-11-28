@@ -113,13 +113,23 @@ async function makeCover(book: Book): Promise<Blob | null> {
 }
 
 /**
+ * Asks the browser to keep the library when it clears storage for space. Chromium and Safari
+ * decide on their own, silently; Firefox shows a permission pop-up instead, so it isn't asked
+ * there (its default storage is kept until space runs low).
+ */
+function askToPersist() {
+	if (/Firefox\//.test(navigator.userAgent)) return;
+	void navigator.storage.persist?.().catch(() => {});
+}
+
+/**
  * Adds (or refreshes) a book. The file is streamed into storage, so even very
  * large books never sit in memory. Resolves to null if storage is unavailable.
  */
 export async function addBook(file: File, book: Book): Promise<LibraryEntry | null> {
 	const dir = await libraryDir();
 	if (!dir) return null;
-	void navigator.storage.persist?.().catch(() => {});
+	askToPersist();
 
 	const existing = (await readIndex(dir)).find((e) => e.id === book.id);
 	if (!existing) {

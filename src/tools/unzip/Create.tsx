@@ -1,7 +1,9 @@
 import * as Comlink from "comlink";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import { explainOnce } from "../../lib/confirm.tsx";
 import { formatBytes, formatDuration } from "../../lib/format.ts";
 import { Icon } from "../../lib/Icon.tsx";
+import { willAskWhereToSave } from "../../lib/saveFile.ts";
 import { Button, Card, Note, Pills, Progress } from "../../lib/ui.tsx";
 import { startWorker, type WorkerHandle } from "../../lib/worker.ts";
 import {
@@ -263,6 +265,13 @@ export default function Create() {
 			folderInput.current?.click();
 			return;
 		}
+		const ok = await explainOnce("read-folder", {
+			title: "Add a folder",
+			message:
+				"Next, your browser asks you to pick a folder and to let this site view its files. Nothing is uploaded; the files stay on this device. Tip: dragging a folder onto the box adds it without that question.",
+			confirmLabel: "Choose folder",
+		});
+		if (!ok) return;
 		try {
 			const picked = await pickDirectory();
 			if (picked) add(picked);
@@ -279,7 +288,7 @@ export default function Create() {
 		const started = performance.now();
 		setRun({ kind: "running", bytes: 0, total, path: "", started });
 		try {
-			const target = await openArchiveTarget(fileName, mimeType(format), extension(format));
+			const target = await openArchiveTarget(fileName, mimeType(format), extension(format), total);
 			if (active.current !== operation) {
 				await target?.abort();
 				return;
@@ -372,7 +381,7 @@ export default function Create() {
 					<strong>{dragging ? "Release to add" : folderSupport ? "Add files and folders" : "Add files"}</strong>
 					<span className={s.hint}>
 						{folderSupport
-							? "Drop them here or use the buttons. Folder structure is kept. Files stay on this device."
+							? "Drag files and folders here, or use the buttons. Folder structure is kept. Files stay on this device."
 							: "This browser can’t choose folders (iPhone and iPad Safari). Add files instead. Files stay on this device."}
 					</span>
 				</div>
@@ -499,9 +508,11 @@ export default function Create() {
 									? "7z is usually smaller, but needs 7-Zip or a similar app to open."
 									: "TAR.GZ is common on Linux and macOS."}{" "}
 							{level === "max" && format === "7z" ? "Max uses about 700 MB of memory while compressing. " : ""}
-							{toDisk
-								? "The archive is written straight to the file you choose."
-								: "The archive is built in memory, then downloaded, so its size depends on your device’s free memory."}
+							{willAskWhereToSave(total)
+								? "This archive is large, so it’s written straight to a file you choose."
+								: toDisk
+									? "The archive downloads when it’s ready."
+									: "The archive is built in memory, then downloaded, so its size depends on your device’s free memory."}
 						</p>
 						{tooLarge && (
 							<Note tone="danger">

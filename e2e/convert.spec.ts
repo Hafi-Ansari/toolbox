@@ -17,6 +17,8 @@ test.afterEach(() => {
 async function mockSavePicker(page: Page) {
 	await page.addInitScript(() => {
 		const w = window as unknown as { __saved?: number[]; __chunks?: number; showSaveFilePicker: unknown };
+		// Even small results take the save dialog (normally only very large ones do).
+		(window as unknown as { __toolboxDirectDownloadLimit: number }).__toolboxDirectDownloadLimit = 0;
 		w.showSaveFilePicker = async () => ({
 			createWritable: async () => {
 				const parts: Uint8Array[] = [];

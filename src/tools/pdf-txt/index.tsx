@@ -462,7 +462,7 @@ function Review({
 
 	async function download() {
 		const name = swapExtension(file.name, "txt");
-		const out = await openSaveTarget(name, "text/plain", "Plain text").catch(() => null);
+		const out = await openSaveTarget(name, "text/plain", "Plain text", text.length * 3).catch(() => null);
 		if (!out) return;
 		out.write(new TextEncoder().encode(text));
 		await out.close();

@@ -28,7 +28,8 @@ Small, fast tools that run entirely in the browser. No uploads, no accounts, no 
 ## How "no size limit" works
 
 - **Input** is never loaded whole. MuPDF reads byte ranges on demand: the worker serves them from the `File` with `FileReaderSync`, through a small LRU cache of 1 MB blocks (`src/lib/pdf/fileStream.ts`).
-- **EPUB output** is streamed. Chunks flow from the worker straight to disk through the File System Access API (Chromium). Other browsers collect a Blob and download it.
+- **EPUB output** is streamed. Results up to 512 MB are collected and downloaded directly, with no save dialog. Larger ones stream from the worker straight to a file the user picks, through the File System Access API (Chromium); other browsers collect a Blob and download it.
+- **No browser pop-ups for ordinary use.** Confirmations are in-page dialogs (`src/lib/confirm.tsx`). Where the browser must ask permission (choosing a folder to read or extract into), the page explains it first, once per device; dragging folders in needs no permission.
 - **PDF output** is built in WASM memory, which tops out at 2 GB. That is far beyond any real EPUB→PDF result.
 - Vercel only serves static files, so its 4.5 MB function body limit never applies.
 

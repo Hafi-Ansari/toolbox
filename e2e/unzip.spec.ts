@@ -79,6 +79,9 @@ async function mockFolder(page: Page, delay = 0) {
 			};
 		}
 		Object.defineProperty(window, "showDirectoryPicker", { configurable: true, value: async () => directory("") });
+		// The in-page explanation before the browser prompt was already seen (tested on its own).
+		if (!(window as unknown as { keepExplanation?: boolean }).keepExplanation)
+			localStorage.setItem("toolbox.explained.write-folder", "1");
 	}, delay);
 }
 
@@ -173,6 +176,47 @@ test("streams to folders and sanitizes each saved path", async ({ page }) => {
 		"unsafe-names/nested/ok.txt": "Synthetic file 6\n",
 		"unsafe-names/Nested (2)/OK.TXT": "Synthetic file 7\n",
 	});
+});
+
+test("explains the browser's folder prompt once, in the page, before it appears", async ({ page }) => {
+	await page.addInitScript(() => Object.assign(window, { keepExplanation: true }));
+	await mockFolder(page);
+	await open(page, "sample.zip");
+	const explanation = page.getByRole("dialog", { name: "Choose where to extract" });
+
+	// Cancelling the explanation never reaches the browser's prompt.
+	await page.getByRole("button", { name: "Extract all", exact: true }).click();
+	await explanation.getByRole("button", { name: "Cancel" }).click();
+	await expect(explanation).toBeHidden();
+	expect(Object.keys((await fixture(page)).files)).toEqual([]);
+
+	await page.getByRole("button", { name: "Extract all", exact: true }).click();
+	await explanation.getByRole("button", { name: "Choose folder" }).click();
+	await expect(page.getByText("Extracted 4 files into the selected folder.")).toBeVisible();
+
+	// Once seen, it isn't shown again on this device.
+	await page.getByRole("button", { name: "Extract all", exact: true }).click();
+	await expect(page.getByText("Extracted 4 files into the selected folder.")).toBeVisible();
+	await expect(explanation).toHaveCount(0);
+	expect(Object.keys((await fixture(page)).files).filter((name) => name.endsWith("notice.txt"))).toHaveLength(2);
+});
+
+test("small results download directly, without the save dialog", async ({ page }) => {
+	await page.addInitScript(() => {
+		Object.defineProperty(window, "showSaveFilePicker", {
+			configurable: true,
+			value: async () => {
+				Object.assign(window, { pickerOpened: true });
+				throw new DOMException("not expected", "AbortError");
+			},
+		});
+	});
+	await open(page, "sample.zip");
+	await page.getByRole("button", { name: "notice.txt", exact: true }).click();
+	const notice = page.waitForEvent("download");
+	await page.getByRole("button", { name: "Save file", exact: true }).click();
+	expect((await notice).suggestedFilename()).toBe("notice.txt");
+	expect(await page.evaluate(() => (window as unknown as { pickerOpened?: boolean }).pickerOpened)).toBeUndefined();
 });
 
 for (const file of ["secret.zip", "secret-names.7z"]) {
