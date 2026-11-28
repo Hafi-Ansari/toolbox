@@ -19,11 +19,13 @@ export interface Destination {
 	abort(): Promise<void>;
 }
 
-export async function openDownload(name: string, zip: boolean): Promise<Destination | null> {
+/** `expectedBytes`: about how big the download will be; small ones skip the save dialog. */
+export async function openDownload(name: string, zip: boolean, expectedBytes: number): Promise<Destination | null> {
 	const output = await openSaveTarget(
 		name,
 		zip ? "application/zip" : "application/octet-stream",
 		zip ? "ZIP archive" : "File",
+		expectedBytes,
 	);
 	if (!output) return null;
 	return {

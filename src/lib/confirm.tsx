@@ -45,6 +45,28 @@ export function confirm(options: ConfirmOptions): Promise<boolean> {
 	});
 }
 
+/**
+ * Explains a browser prompt before it appears, the first time only on this device. Resolves
+ * true at once if it was already explained; otherwise asks, and remembers a "yes".
+ */
+export async function explainOnce(key: string, options: ConfirmOptions): Promise<boolean> {
+	const storageKey = `toolbox.explained.${key}`;
+	try {
+		if (localStorage.getItem(storageKey)) return true;
+	} catch {
+		// Storage blocked: explain every time.
+	}
+	const ok = await confirm(options);
+	if (ok) {
+		try {
+			localStorage.setItem(storageKey, "1");
+		} catch {
+			// Not remembered; harmless.
+		}
+	}
+	return ok;
+}
+
 function ConfirmDialog({
 	title,
 	message,

@@ -80,6 +80,10 @@ async function mockPickers(page: Page, savePicker = false) {
 				configurable: true,
 				value: async () => handle("Trip", root),
 			});
+			// The in-page explanation before the browser prompt was already seen (tested in unzip.spec).
+			localStorage.setItem("toolbox.explained.read-folder", "1");
+			// With the save picker, every archive streams to it (normally only very large ones do).
+			if (savePicker) Object.assign(window, { __toolboxDirectDownloadLimit: 0 });
 			const saved = { bytes: [] as number[], aborted: false, closed: false, writes: 0 };
 			Object.assign(window, { savedArchive: saved });
 			Object.defineProperty(window, "showSaveFilePicker", {

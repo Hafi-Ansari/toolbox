@@ -1,5 +1,6 @@
 import * as Comlink from "comlink";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { explainOnce } from "../../lib/confirm.tsx";
 import { formatBytes } from "../../lib/format.ts";
 import { Icon } from "../../lib/Icon.tsx";
 import { Button, Card, Chip, FileDrop, Note, Progress } from "../../lib/ui.tsx";
@@ -137,7 +138,20 @@ function Workspace({
 		const started = performance.now();
 		setSave({ kind: "saving", bytes: 0, total, started });
 		try {
-			const target = await (toFolder ? openFolder(base, paths, outputDirs) : openDownload(name, asZip));
+			if (toFolder) {
+				const ok = await explainOnce("write-folder", {
+					title: "Choose where to extract",
+					message:
+						"Next, your browser asks you to pick a folder and to let this site save files in it. That's how the files go straight to disk; nothing is uploaded.",
+					confirmLabel: "Choose folder",
+				});
+				if (!ok) {
+					active.current = null;
+					setSave(undefined);
+					return;
+				}
+			}
+			const target = await (toFolder ? openFolder(base, paths, outputDirs) : openDownload(name, asZip, total));
 			if (active.current !== operation) {
 				await target?.abort();
 				return;

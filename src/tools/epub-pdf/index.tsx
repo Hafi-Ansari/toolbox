@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { detectFile } from "../../lib/detect.ts";
 import { formatBytes, formatDuration, swapExtension } from "../../lib/format.ts";
 import { Icon } from "../../lib/Icon.tsx";
-import { canStreamToDisk, openSaveTarget, type SaveTarget } from "../../lib/saveFile.ts";
+import { canStreamToDisk, openSaveTarget, type SaveTarget, willAskWhereToSave } from "../../lib/saveFile.ts";
 import { Button, Card, Chip, FileDrop, Kbd, Note, Pills, Progress } from "../../lib/ui.tsx";
 import { startWorker, type WorkerHandle } from "../../lib/worker.ts";
 import type { ConverterApi } from "./convert.worker.ts";
@@ -140,6 +140,7 @@ export default function EpubPdfTool() {
 				outName,
 				toPdf ? "application/pdf" : "application/epub+zip",
 				toPdf ? "PDF document" : "EPUB book",
+				file.size,
 			);
 		} catch (e) {
 			setState({ kind: "error", file, info, message: message(e) });
@@ -275,7 +276,7 @@ export default function EpubPdfTool() {
 					<span>
 						<strong>Any size.</strong>{" "}
 						{canStreamToDisk()
-							? "Files are read on demand and output streams straight to disk."
+							? "Files are read on demand, and very large outputs stream straight to disk."
 							: "Files are read on demand; very large outputs need enough free memory."}
 					</span>
 				</li>
@@ -471,7 +472,8 @@ function Workspace({
 				)}
 				{state.kind === "ready" && (
 					<span className={s.shortcut}>
-						{canStreamToDisk() ? "You'll choose where to save" : "Saves to your downloads"} · <Kbd>Enter</Kbd>
+						{willAskWhereToSave(state.file.size) ? "You'll choose where to save" : "Saves to your downloads"} ·{" "}
+						<Kbd>Enter</Kbd>
 					</span>
 				)}
 			</div>

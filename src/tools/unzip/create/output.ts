@@ -1,6 +1,8 @@
 // Where a new archive goes. 7-Zip writes mostly in order but patches headers it
-// wrote earlier, so the target takes positioned writes. With a save-file picker
-// (Chromium) bytes stream to disk; elsewhere they collect in memory, then download.
+// wrote earlier, so the target takes positioned writes. Ordinary archives collect in
+// memory, then download directly (no dialog). Very large ones, where a save-file picker
+// exists (Chromium), stream to the file the user picks instead.
+import { willAskWhereToSave } from "../../../lib/saveFile.ts";
 
 export interface ArchiveTarget {
 	kind: "disk" | "download";
@@ -19,10 +21,18 @@ type PickerWindow = Window & {
 
 export const canStreamArchive = () => typeof (window as PickerWindow).showSaveFilePicker === "function";
 
-/** Must be called from a click. Resolves to null when the save dialog is canceled. */
-export async function openArchiveTarget(name: string, mime: string, ext: string): Promise<ArchiveTarget | null> {
+/**
+ * Must be called from a click. `expectedBytes`: about how big the archive will be (the inputs'
+ * total); small archives skip the save dialog. Resolves to null when the save dialog is canceled.
+ */
+export async function openArchiveTarget(
+	name: string,
+	mime: string,
+	ext: string,
+	expectedBytes: number,
+): Promise<ArchiveTarget | null> {
 	const picker = (window as PickerWindow).showSaveFilePicker;
-	if (picker) {
+	if (picker && willAskWhereToSave(expectedBytes)) {
 		let handle: FileSystemFileHandle;
 		try {
 			handle = await picker({ suggestedName: name, types: [{ description: "Archive", accept: { [mime]: [ext] } }] });

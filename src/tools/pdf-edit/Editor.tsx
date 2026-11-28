@@ -472,7 +472,8 @@ export function Editor({
 		setBusy(true);
 		setMessage(undefined);
 		try {
-			target = await openSaveTarget(name, "application/pdf", "Edited PDF");
+			// The edited PDF is built in memory either way, so it downloads directly (no save dialog).
+			target = await openSaveTarget(name, "application/pdf", "Edited PDF", 0);
 			if (!target) return;
 			const result = await build(state);
 			target.write(result.bytes);
@@ -499,7 +500,12 @@ export function Editor({
 		try {
 			if (zip || groups.length === 1) {
 				const name = zip ? `${baseName} (split).zip` : names[0];
-				target = await openSaveTarget(name, zip ? "application/zip" : "application/pdf", zip ? "ZIP archive" : "PDF");
+				target = await openSaveTarget(
+					name,
+					zip ? "application/zip" : "application/pdf",
+					zip ? "ZIP archive" : "PDF",
+					0,
+				);
 				if (!target) return;
 			}
 			const unsupported = new Set<string>();
