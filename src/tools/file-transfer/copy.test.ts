@@ -72,6 +72,15 @@ describe("file transfer copy", () => {
 			"Calm Otter stopped receiving.",
 		);
 		expect(endedText(batch({ phase: "interrupted", side: "receive" }), "Calm Otter")).toMatch(/stopped partway/);
+		expect(endedText(batch({ phase: "failed", error: "read-error" }), "Calm Otter")).toMatch(
+			/^Couldn't read one of the files\. It may have been moved/,
+		);
+		expect(endedText(batch({ phase: "failed", side: "receive", error: "read-error" }), "Calm Otter")).toMatch(
+			/^Calm Otter couldn't read one of the files/,
+		);
+		expect(endedText(batch({ phase: "failed", error: "sink-error" }), "Calm Otter")).toMatch(
+			/^Calm Otter couldn't save the files\./,
+		);
 	});
 
 	it("cleans names like the server", () => {

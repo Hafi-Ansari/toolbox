@@ -92,7 +92,10 @@ export function OfferCard({
 					))}
 				</ul>
 				{offer.files.length > LIST_MAX && (
-					<p className={s.muted}>and {filesText(offer.files.length - LIST_MAX)} more</p>
+					// The list scrolls, so "and 14 more" under nine visible rows read as a wrong count: say what's listed.
+					<p className={s.muted}>
+						The list shows the first {LIST_MAX.toLocaleString("en-US")} of {filesText(offer.files.length)}.
+					</p>
 				)}
 				{canFolder && (
 					<p className={s.muted}>
