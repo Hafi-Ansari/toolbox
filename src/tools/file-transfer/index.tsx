@@ -39,8 +39,8 @@ export default function FileTransfer() {
 			<header className={s.intro}>
 				<h1>Blazing Fast File Transfer</h1>
 				<p className={s.lead}>
-					Send photos and videos straight to another device. Nothing is uploaded: files go directly between your
-					browsers.
+					Send photos, videos or whole folders straight to another device. Nothing is uploaded: files go directly
+					between your browsers.
 				</p>
 			</header>
 			{deps ? (
@@ -262,7 +262,8 @@ export function FileTransferApp({ deps }: { deps: FtDeps }) {
 			{conn.phase === "none" && <Lobby presence={presence} snap={snap} />}
 			<p className={s.smallPrint}>
 				Connecting shares your network address with that person. Files travel encrypted, straight between the two
-				browsers; nothing is stored on a server.
+				browsers; nothing is stored on a server. Fastest when both devices are on Wi-Fi or a wired connection. On mobile
+				data, speed is limited by the cellular network, and the transfer counts against your data plan.
 				{deps.demo && " Demo mode: the people and transfers on this page are simulated."}
 			</p>
 		</>

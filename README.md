@@ -1,6 +1,6 @@
 # Toolbox
 
-Small, fast tools that run entirely in the browser. No uploads, no accounts, no size limits. (The exceptions: the shared room, whose whole point is to pass text between devices through a server, and File Transfer, which uses a server only to find the other device; the files go directly between the two browsers.)
+Small, fast tools that run entirely in the browser. No uploads, no accounts, no size limits. (The exceptions: the shared room, whose whole point is to pass text and files between devices through a server, and File Transfer, which uses a server only to find the other device; the files go directly between the two browsers.)
 
 | Tool | Path | What it does |
 |---|---|---|
@@ -8,9 +8,9 @@ Small, fast tools that run entirely in the browser. No uploads, no accounts, no 
 | **EPUB Reader** | `/read` | A light, dark-mode ebook reader: pages or scrolling, contents, typography settings, and a library of recent books kept on the device. |
 | **PDF → TXT** | `/pdf-txt` | Turns a book of poems or prose into plain text (one verse line or one sentence per line), shown beside the printed page so you can check and edit it before saving. Reads scanned pages with OCR on demand. |
 | **Zip / Unzip** | `/unzip` | Browse ZIP, 7z, RAR and other archives, preview text and images, and extract files locally. Or pack files and folders into a new ZIP, 7z or TAR.GZ, optionally with an AES-256 password. |
-| **PDF Editor** | `/pdf-edit` | Adds text, drawings, marks, signatures and images to PDF pages and downloads a new copy. |
-| **Shared room** | `/room` | A text box all your devices share: make a room, tap it on another device, paste. Rooms are public and end when their creator leaves, or after 2 hours. |
-| **Blazing Fast File Transfer** | `/file-transfer` | Sends photos, videos and whole folders straight to another device over WebRTC, striped across several connections. The other person accepts and gets one .zip download (or, opt-in, the files in a folder). Nothing is uploaded. |
+| **PDF Editor** | `/pdf-edit` | Signs, fills in forms, and adds text, drawings, marks and images to PDF pages. Rearranges, rotates, duplicates and deletes pages, merges several PDFs, and splits or extracts pages (into one .zip or separate PDFs). Opens password-protected PDFs, and downloads a new copy. |
+| **Shared room** | `/room` | A text box and files every device can see: make a room, open the page on another device, tap the room, and paste or add files. Rooms are public and end when their creator leaves, or after 2 hours. |
+| **Blazing Fast File Transfer** | `/file-transfer` | Sends photos, videos and whole folders straight to another device over WebRTC, striped across several connections. The other person accepts and gets one .zip download (or, opt-in, the files in a folder). Nothing is uploaded. Fastest on Wi-Fi or wired; mobile data limits the speed. |
 
 ## Stack
 

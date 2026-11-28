@@ -94,7 +94,9 @@ function Home() {
 			<section className={s.hero}>
 				<p className={s.kicker}>Local-first utilities</p>
 				<h1>Small, fast tools that run entirely in your browser.</h1>
-				<p className={s.heroLead}>No uploads, no accounts, no limits. Pick a tool to get started.</p>
+				<p className={s.heroLead}>
+					No accounts, no limits, and almost nothing leaves your device. Pick a tool to get started.
+				</p>
 			</section>
 			<ul className={s.grid}>
 				{tools.map((t) => (

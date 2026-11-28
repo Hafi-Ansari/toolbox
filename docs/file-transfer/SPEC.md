@@ -641,8 +641,10 @@ Use the shared kit (`Card`, `Button`, `Note`, `Progress`, `FileDrop`, `Chip`) an
 `send` only if needed (**shared file** `src/lib/Icon.tsx`).
 
 Screens and copy:
-- **Header:** h1 "Blazing Fast File Transfer"; lead "Send photos and videos straight to another device. Nothing is uploaded: files
-  go directly between your browsers."
+- **Header:** h1 "Blazing Fast File Transfer"; lead "Send photos, videos or whole folders straight to another device. Nothing is
+  uploaded: files go directly between your browsers." The small print under the panel adds: "Fastest when both
+  devices are on Wi-Fi or a wired connection. On mobile data, speed is limited by the cellular network, and the
+  transfer counts against your data plan."
 - **Me bar:** `🦊 You're Brisk Fox` · *Edit name* (inline input, Enter saves) · switch *Visible* / *Hidden*
   (when hidden: "Others can't see you. People with your invite link can still connect.") · *Copy invite link*
   ("Copied" for 2 s).

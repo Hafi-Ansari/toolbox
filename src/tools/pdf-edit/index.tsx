@@ -69,7 +69,10 @@ export default function PdfEditorTool() {
 			<header className={s.intro}>
 				<h1>PDF Editor</h1>
 				{state.kind !== "ready" && (
-					<p>Add text, draw, sign, and place images on a PDF. Everything stays on this device.</p>
+					<p>
+						Sign, fill in forms, add text, drawings and images, or merge, split and rearrange pages. Everything stays on
+						this device.
+					</p>
 				)}
 			</header>
 			<Card className={s.panel}>
