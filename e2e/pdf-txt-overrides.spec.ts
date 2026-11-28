@@ -52,12 +52,15 @@ test.describe("PDF → TXT overrides", () => {
 		// With the text edited, it asks first; declining keeps the edit.
 		await caretAt(page, "Down where the water");
 		await text(page).pressSequentially("!");
-		page.once("dialog", (d) => d.dismiss());
 		await keep.click();
+		await page.getByRole("dialog", { name: "Discard your edits?" }).getByRole("button", { name: "Cancel" }).click();
 		await expect(text(page)).toHaveValue(/Dow!n where/);
 
-		page.once("dialog", (d) => d.accept());
 		await keep.click();
+		await page
+			.getByRole("dialog", { name: "Discard your edits?" })
+			.getByRole("button", { name: "Discard edits" })
+			.click();
 		await expect(text(page)).toHaveValue(
 			new RegExp(`sing, and the cook put down his knife\\.\\n\\n${SONG}\\nWhen the song`),
 		);

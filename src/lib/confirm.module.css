@@ -1,0 +1,141 @@
+/* Enter and exit are CSS transitions: the dialog closes (and the page is usable) at once, while
+   `overlay`/`display` allow-discrete keep it painted for the fade-out. Browsers without
+   allow-discrete transitions simply show and hide it without the fade. */
+.dialog {
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: var(--text);
+	max-width: min(420px, calc(100vw - 2 * var(--s-4)));
+	width: 100%;
+	overflow: visible;
+	opacity: 0;
+	transform: translateY(4px) scale(0.98);
+	transition:
+		opacity 140ms var(--ease),
+		transform 140ms var(--ease),
+		overlay 140ms allow-discrete,
+		display 140ms allow-discrete;
+}
+
+.dialog[open] {
+	opacity: 1;
+	transform: none;
+	transition-duration: 180ms;
+}
+
+@starting-style {
+	.dialog[open] {
+		opacity: 0;
+		transform: translateY(8px) scale(0.98);
+	}
+}
+
+.dialog::backdrop {
+	background: color-mix(in srgb, var(--bg) 0%, transparent);
+	backdrop-filter: blur(0);
+	transition:
+		background-color 140ms var(--ease),
+		backdrop-filter 140ms var(--ease),
+		overlay 140ms allow-discrete,
+		display 140ms allow-discrete;
+}
+
+.dialog[open]::backdrop {
+	background: color-mix(in srgb, var(--bg) 70%, transparent);
+	backdrop-filter: blur(4px);
+}
+
+@starting-style {
+	.dialog[open]::backdrop {
+		background: color-mix(in srgb, var(--bg) 0%, transparent);
+		backdrop-filter: blur(0);
+	}
+}
+
+.panel {
+	display: grid;
+	gap: var(--s-3);
+	padding: var(--s-5);
+	border-radius: var(--radius);
+	border: 1px solid var(--border-strong);
+	background: var(--surface);
+	box-shadow:
+		0 24px 64px -16px rgb(0 0 0 / 0.6),
+		0 0 0 1px color-mix(in srgb, var(--text) 4%, transparent);
+}
+
+.title {
+	margin: 0;
+	font-size: var(--fs-md);
+	font-weight: 600;
+	line-height: 1.35;
+}
+
+.message {
+	margin: 0;
+	color: var(--text-muted);
+	font-size: var(--fs-sm);
+	line-height: 1.5;
+}
+
+.actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: var(--s-2);
+	margin-top: var(--s-2);
+}
+
+.button {
+	font: inherit;
+	font-size: var(--fs-sm);
+	font-weight: 500;
+	padding: var(--s-2) var(--s-4);
+	border-radius: var(--radius-sm);
+	border: 1px solid transparent;
+	cursor: pointer;
+	transition:
+		background var(--dur) var(--ease),
+		border-color var(--dur) var(--ease);
+}
+
+.button:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+}
+
+.cancel {
+	background: transparent;
+	border-color: var(--border-strong);
+	color: var(--text);
+}
+
+.cancel:hover {
+	background: var(--surface-2);
+	border-color: var(--text-muted);
+}
+
+.primary {
+	background: var(--accent);
+	color: var(--accent-ink);
+}
+
+.primary:hover {
+	background: var(--accent-soft);
+}
+
+.danger {
+	background: var(--danger);
+	color: #1a0700;
+}
+
+.danger:hover {
+	background: color-mix(in srgb, var(--danger) 85%, white);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.dialog,
+	.dialog::backdrop {
+		transition: none;
+	}
+}

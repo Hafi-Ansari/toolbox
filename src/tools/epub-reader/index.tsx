@@ -1,5 +1,6 @@
 import { type DragEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
+import { confirm } from "../../lib/confirm.tsx";
 import { detectFile } from "../../lib/detect.ts";
 import { formatBytes } from "../../lib/format.ts";
 import { Note } from "../../lib/ui.tsx";
@@ -342,7 +343,14 @@ export default function EpubReaderTool() {
 						type="button"
 						className={s.textBtn}
 						onClick={async () => {
-							if (!window.confirm("Remove all books from this device?")) return;
+							const ok = await confirm({
+								title: "Remove all books from this device?",
+								message:
+									"Your library and reading positions on this device are deleted. The original files aren't affected.",
+								confirmLabel: "Remove all",
+								tone: "danger",
+							});
+							if (!ok) return;
 							await clearLibrary();
 							void refresh();
 						}}

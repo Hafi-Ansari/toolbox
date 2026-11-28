@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { confirm } from "../../lib/confirm.tsx";
 import { Icon } from "../../lib/Icon.tsx";
 import { Button, Card, Note } from "../../lib/ui.tsx";
 import {
@@ -314,7 +315,13 @@ function RoomView({ id, onLeave }: { id: string; onLeave: () => void }) {
 	};
 
 	async function end() {
-		if (!window.confirm("End this room for everyone? Its text and files are deleted.")) return;
+		const ok = await confirm({
+			title: "End this room for everyone?",
+			message: "Its text and files are deleted for every device in the room.",
+			confirmLabel: "End room",
+			tone: "danger",
+		});
+		if (!ok) return;
 		await endRoom(id).catch(() => {});
 		onLeave();
 	}
