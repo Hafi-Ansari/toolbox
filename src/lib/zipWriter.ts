@@ -31,6 +31,8 @@ interface Entry {
 	usize: number;
 	offset: number;
 	descriptor?: boolean;
+	/** addStream's `modified`: DOS time/date and the extended-timestamp extra field. */
+	time?: { dos: number; date: number; unix: number };
 }
 
 const enc = new TextEncoder();
@@ -39,6 +41,32 @@ const MAX32 = 0xffffffff;
 // Fixed DOS timestamp (1980-01-01 00:00): output is deterministic and timezone-free.
 const DOS_TIME = 0;
 const DOS_DATE = (0 << 9) | (1 << 5) | 1;
+
+/** Extended-timestamp extra field (0x5455) with only the modified time: 4 header bytes + flags + u32. */
+export const EXTENDED_TIME_EXTRA = 9;
+
+/** DOS time and date (local time, as unzip tools expect) and the UTC seconds for the 0x5455 extra field. */
+function stamp(modified: number): NonNullable<Entry["time"]> {
+	if (!Number.isFinite(modified)) throw new Error("Invalid ZIP entry modified time.");
+	const d = new Date(modified);
+	const y = d.getFullYear();
+	const inRange = y >= 1980 && y <= 2107;
+	return {
+		dos: inRange ? (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1) : DOS_TIME,
+		date: inRange ? ((y - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate() : DOS_DATE,
+		// Readers take this as signed 32-bit seconds; clamp to what they all agree on.
+		unix: Math.min(Math.max(Math.floor(modified / 1000), 0), 0x7fffffff),
+	};
+}
+
+function timeExtra(time: NonNullable<Entry["time"]>): Uint8Array {
+	const x = new DataView(new ArrayBuffer(EXTENDED_TIME_EXTRA));
+	x.setUint16(0, 0x5455, true);
+	x.setUint16(2, 5, true);
+	x.setUint8(4, 1); // flags: modified time present
+	x.setUint32(5, time.unix, true);
+	return new Uint8Array(x.buffer);
+}
 
 export type ChunkSink = (chunk: Uint8Array) => void;
 
@@ -104,7 +132,11 @@ export class ZipWriter {
 		this.emit(body);
 	}
 
-	addStream(name: string, size: number): { write: ChunkSink; close: () => void } {
+	/**
+	 * A stored entry whose bytes arrive in chunks. `modified` (ms since epoch) sets the DOS date/time and
+	 * adds an extended-timestamp extra field (0x5455); without it the entry keeps the fixed 1980 date.
+	 */
+	addStream(name: string, size: number, modified?: number): { write: ChunkSink; close: () => void } {
 		if (this.writing) throw new Error("Close the current ZIP entry before adding another.");
 		if (this.names.has(name)) throw new Error(`Duplicate zip entry: ${name}`);
 		const bytes = enc.encode(name);
@@ -119,13 +151,15 @@ export class ZipWriter {
 			offset: this.offset,
 			descriptor: true,
 		};
+		if (modified !== undefined) entry.time = stamp(modified);
 		const z64 = size >= MAX32;
-		const extraLen = z64 ? 20 : 0;
+		const extraLen = (z64 ? 20 : 0) + (entry.time ? EXTENDED_TIME_EXTRA : 0);
 		const h = new DataView(new ArrayBuffer(30));
 		h.setUint32(0, 0x04034b50, true);
 		h.setUint16(4, z64 ? 45 : 20, true);
 		h.setUint16(6, 0x0808, true);
-		h.setUint16(12, DOS_DATE, true);
+		h.setUint16(10, entry.time?.dos ?? DOS_TIME, true);
+		h.setUint16(12, entry.time?.date ?? DOS_DATE, true);
 		h.setUint32(18, z64 ? MAX32 : 0, true);
 		h.setUint32(22, z64 ? MAX32 : 0, true);
 		h.setUint16(26, bytes.length, true);
@@ -135,13 +169,14 @@ export class ZipWriter {
 		this.emit(new Uint8Array(h.buffer));
 		this.emit(bytes);
 		if (z64) {
-			const extra = new DataView(new ArrayBuffer(extraLen));
+			const extra = new DataView(new ArrayBuffer(20));
 			extra.setUint16(0, 0x0001, true);
 			extra.setUint16(2, 16, true);
 			extra.setBigUint64(4, BigInt(size), true);
 			extra.setBigUint64(12, BigInt(size), true);
 			this.emit(new Uint8Array(extra.buffer));
 		}
+		if (entry.time) this.emit(timeExtra(entry.time));
 		let crc = 0xffffffff;
 		let remaining = size;
 		let closed = false;
@@ -180,15 +215,16 @@ export class ZipWriter {
 			const zOffset = e.offset >= MAX32;
 			const zSize = e.usize >= MAX32;
 			const z64 = zOffset || zSize;
-			const extraLen = z64 ? 4 + (zSize ? 16 : 0) + (zOffset ? 8 : 0) : 0;
-			const c = new DataView(new ArrayBuffer(46 + extraLen));
+			const z64Len = z64 ? 4 + (zSize ? 16 : 0) + (zOffset ? 8 : 0) : 0;
+			const extraLen = z64Len + (e.time ? EXTENDED_TIME_EXTRA : 0);
+			const c = new DataView(new ArrayBuffer(46 + z64Len));
 			c.setUint32(0, 0x02014b50, true);
 			c.setUint16(4, z64 ? 45 : 20, true);
 			c.setUint16(6, z64 ? 45 : 20, true);
 			c.setUint16(8, (e.utf8 ? 0x0800 : 0) | (e.descriptor ? 8 : 0), true);
 			c.setUint16(10, e.method, true);
-			c.setUint16(12, DOS_TIME, true);
-			c.setUint16(14, DOS_DATE, true);
+			c.setUint16(12, e.time?.dos ?? DOS_TIME, true);
+			c.setUint16(14, e.time?.date ?? DOS_DATE, true);
 			c.setUint32(16, e.crc, true);
 			c.setUint32(20, zSize ? MAX32 : e.csize, true);
 			c.setUint32(24, zSize ? MAX32 : e.usize, true);
@@ -197,7 +233,7 @@ export class ZipWriter {
 			c.setUint32(42, zOffset ? MAX32 : e.offset, true);
 			if (z64) {
 				c.setUint16(46, 0x0001, true);
-				c.setUint16(48, extraLen - 4, true);
+				c.setUint16(48, z64Len - 4, true);
 				if (zSize) {
 					c.setBigUint64(50, BigInt(e.usize), true);
 					c.setBigUint64(58, BigInt(e.csize), true);
@@ -206,7 +242,8 @@ export class ZipWriter {
 			}
 			this.emit(new Uint8Array(c.buffer, 0, 46));
 			this.emit(e.name);
-			if (z64) this.emit(new Uint8Array(c.buffer, 46, extraLen));
+			if (z64) this.emit(new Uint8Array(c.buffer, 46, z64Len));
+			if (e.time) this.emit(timeExtra(e.time));
 		}
 		const cdSize = this.offset - cdStart;
 		const count = this.entries.length;
