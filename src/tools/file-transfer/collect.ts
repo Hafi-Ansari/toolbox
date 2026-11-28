@@ -1,5 +1,5 @@
 // Gathers files to send, with their relative paths (SPEC §4.3, §9). Copied from
-// src/tools/unzip/create/collect.ts, keeping only the prompt-free parts: drag and drop of files and
+// src/lib/collect.ts, keeping only the prompt-free parts: drag and drop of files and
 // folders (`webkitGetAsEntry`), and a plain `<input type=file multiple>`. No `showDirectoryPicker`
 // and no `webkitdirectory` here: both show browser prompts.
 import type { SendFile } from "./types.ts";
