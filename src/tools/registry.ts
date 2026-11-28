@@ -69,4 +69,13 @@ export const tools: ToolMeta[] = [
 		tags: ["Text", "Sync"],
 		load: () => import("./room/index.tsx"),
 	},
+	{
+		id: "file-transfer",
+		path: "/file-transfer",
+		title: "Blazing Fast File Transfer",
+		blurb: "Send photos and videos straight to another device, as fast as your networks allow. Nothing is uploaded.",
+		icon: "arrow",
+		tags: ["Files", "P2P"],
+		load: () => import("./file-transfer/index.tsx"),
+	},
 ];
