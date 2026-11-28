@@ -74,6 +74,22 @@ ceiling. Transfers were 0.25–1 GiB.
 | 50 ms RTT + 0.1% loss | **0.9 MB/s** | 6.9 MB/s (8); 4 lanes 3.4 |
 | 30 ms RTT, 100 Mbit/s, 4 MiB buffer | 6.4 MB/s | 6.4 MB/s (4) |
 
+**WP6 benchmark (real engine and lanes, `scripts/file-transfer-bench/`, results/2026-11-28.md).** Same machine and
+proxy, MB/s unordered / zip-ordered. The proxy now carries up to ~65 MB/s.
+
+| Link | 1 lane | 4 lanes | 6 lanes (default) | 8 lanes |
+|---|---:|---:|---:|---:|
+| Same machine, direct | 57.0 / 37.8 | 55.8 / 53.6 | 56.1 / 55.0 | 56.3 / 54.8 |
+| 20 ms RTT, 1 Gbit/s | 0.1* / 46.0 | 60.8 / 61.4 | 61.2 / 62.7 | 60.6 / 65.1 |
+| 50 ms RTT, 1 Gbit/s | 0.3* / 0.3* | 15.4 / 20.2 | 64.1 / 66.3 | 65.3 / 60.3 |
+| 100 ms RTT, 1 Gbit/s | 0.0* / 0.0* | 14.2 / 16.8 | 20.5 / 30.2 | 34.3 / 28.6 |
+| 50 ms RTT + 0.1% loss | 0.8 / 0.8 | 3.4 / 2.8 | 5.3 / 3.5 | 7.4 / 5.7 |
+
+\* Single-lane proxied runs stalled (SCTP back-off after packets lost between the proxy and the browser; the proxy
+counted none); the spike measured 5.4 MB/s for 1 lane at 50 ms. Hedging (§7.4) is what lets zip-ordered match
+unordered: without it, 6 lanes at 100 ms measured 0 MB/s. The default of 6 lanes holds up. Still to do: one real
+long-distance test between two machines.
+
 Other findings:
 
 - **One connection keeps only about 250–400 KB in flight**, no matter how fast the link is, which is why
@@ -217,7 +233,7 @@ Stale fields are removed with `HDEL` when a request notices them.
 **Atomic claim:** use `HSETNX peers claim:<target>`. If an existing claim is stale, `HDEL` it and retry
 `HSETNX` once. Only one of several racing requesters can win.
 
-**IP hashing:** HMAC-SHA-256 keyed with env `SEND_IP_SALT`. Without it in dev, use a random per-process salt;
+**IP hashing:** HMAC-SHA-256 keyed with env `FILE_TRANSFER_IP_SALT`. Without it in dev, use a random per-process salt;
 in production without it, return 503 `no-salt`. `net` uses the IPv4 address, or the first 4 hextets of an IPv6
 address (/64). Read the IP as `api/rooms.ts` `clientIp()` does.
 
@@ -288,7 +304,7 @@ deployed without a store.
 | `handshake` | between accept and lane 0 open | `poll` every 3 s, **plus `read` every 700 ms**, at most 30 s |
 | `connected` | lanes open | 10 s (keeps `busy` and refreshes the claim), 60 s when hidden |
 | `away` | 2 h since the last interaction | **no polling**. Send `leave`, then show "You're hidden after 2 hours away. **Be visible again**" |
-| `off` | the user switched to Hidden | 60 s, with `hidden: true`, so incoming invite-link requests still arrive. No polling in `away` |
+| `off` | the user switched to Hidden | 10 s while the tab is visible, 60 s in a hidden tab, with `hidden: true`, so incoming invite-link requests still arrive (WP6: 60 s missed half of them, since a request expires after 30 s). No polling in `away` |
 
 "Interaction" means `pointerdown`, `keydown`, or `visibilitychange` to visible. On `pagehide`, send `leave`.
 
@@ -376,7 +392,8 @@ Sender → receiver. 16-byte header, big-endian `DataView`, then the payload:
 | 4 | 4 | file index (u32) |
 | 8 | 8 | byte offset in the file (u64; `getBigUint64` → `Number`, must be ≤ 2^53) |
 
-Payload: `1 .. chunk - 16` bytes, where `chunk = min(tuning.chunk, sctp.maxMessageSize) = 256 KiB`.
+Payload: `1 .. chunk - 16` bytes, where `chunk = min(tuning.chunk, sctp.maxMessageSize) = 256 KiB`. The session
+exposes lane 0's `RTCSctpTransport.maxMessageSize` as `PeerSession.maxMessageSize` (WP6).
 
 **Acks** go receiver → sender on the **same lane's** `data` channel as text, so acks for that lane's bytes ride
 the same path:
@@ -411,6 +428,11 @@ runs a loop: **pull the next range → stream it → pull again**. The sink deci
   comes from the acks' `c` field. The receiver holds out-of-order ranges in a reorder buffer of at most
   `reorderWindow` bytes and feeds the zip strictly in order.
 - One slow lane stalls the others (head-of-line). That is the price of a prompt-free single download; measure it.
+- **Hedging (WP6).** The WP6 benchmark found SCTP associations that stop for 10–25 s after burst losses
+  (retransmission back-off), which froze the whole zip stream. So when `ackedContiguous` hasn't moved for
+  `hedgeMs` (1 s) and no lane holding the byte at the mark has been acked in that time, those lanes' unacked
+  ranges (from the mark on) are requeued as well; other lanes deliver them and the receiver drops whichever copy
+  arrives second. At 100 ms RTT this took zip mode from a stall (0 MB/s) to the proxy's ceiling.
 
 **Per lane, the send loop** is adapted from WebDrop `Outgoing.run`:
 
@@ -440,6 +462,7 @@ for each range pulled:
 | `coalesce` | 4 MiB | folder sink: join contiguous chunks before `write()` |
 | `maxOpenFiles` | 16 | folder sink: open writables at once |
 | `memoryMax` | 1 GiB | memory fallback cap |
+| `hedgeMs` | 1 s | ordered sink: re-offer the head range when the contiguous mark stalls this long (WP6, §7.4) |
 
 **Requeue on lane loss:** a lane's ranges are sent in order, so its cumulative `w` ack tells which ranges are
 complete. The rest go back to the front of the queue, from the first unacked byte. In zip mode they go back by
@@ -529,7 +552,8 @@ then Chrome's "Let site edit files?". So:
 - `begin()`: for each file, if the sanitized relative path exists with the same size, add it to `skip`.
   Otherwise, if the name exists, write `name (1).ext`.
 - Writes: one `createWritable({ keepExistingData: false })` per file, opened lazily, at most `maxOpenFiles` at a
-  time. Each lane coalesces contiguous chunks into `coalesce` buffers, then
+  time (WP6: a soft limit; while a lane waits for the disk, waiting files get a writable at once, otherwise a
+  lane could wait for a file that waits for a slot held by a file whose missing bytes are behind that lane). Each lane coalesces contiguous chunks into `coalesce` buffers, then
   `write({ type: "write", position, data })`. Writes are serialized per file through a promise chain. `close()`
   runs when all ranges of a file are persisted, then `file-done` is sent.
 - **Limitation (show it in the UI's details):** the browser can't set file modified times. Received files are
@@ -649,7 +673,7 @@ at most every 5 s.
 - **Server abuse:** request validation (id regexes as in `api/rooms.ts`), caps, per-IP rate limits on writes,
   16 KiB signal payloads, TTLs on everything, and the `FILE_TRANSFER_DISABLED` kill switch. Any public endpoint can be used
   to burn quota. The Room tool has the same exposure; watch the Upstash console.
-- **Public repo:** no secrets in code; `SEND_IP_SALT` lives only in the Vercel env.
+- **Public repo:** no secrets in code; `FILE_TRANSFER_IP_SALT` lives only in the Vercel env.
 
 ---
 
@@ -750,6 +774,13 @@ of rtt/2, random loss, a shared per-direction token-bucket rate cap and a tail-d
 Matrix: lanes {1, 2, 4, 6, 8} × RTT {0, 20, 50, 100 ms} × loss {0, 0.1%} × sink {discard, folder-like OPFS,
 ordered}. Record MB/s to `scripts/file-transfer-bench/results/<date>.md`.
 
+As built (WP6): `node scripts/file-transfer-bench/bench.ts` drives the real `rtc/lanes.ts` + `engine/engine.ts`
+(served by Vite from `bench.html`/`page.ts`) for links {direct, 20/50/100 ms at 1 Gbit/s, 50 ms + 0.1% loss} ×
+lanes {1, 4, 6, 8} × {unordered discard sink, zip-ordered into `ZipWriter`}, 10 s steady state each after a 3 s
+warm-up, about 12 minutes in all. The answerer's `RTCPeerConnection` is wrapped so every lane, including those
+negotiated over `ctrl`, goes through the proxy. Sources are virtual in-memory files; OPFS writes were not
+repeated (the spike's numbers in §3 stand).
+
 The proxy caps at about 32 MB/s on Node, so also run **one real long-distance test** before tuning the defaults:
 two machines, different networks.
 
@@ -768,7 +799,7 @@ agent in its own worktree and branch, merged in order WP1 → WP2/WP3/WP4 → WP
 | WP3 | `sinks/*`, `public/ft-sw.js`, `zipWriter.ts` `modified`, `zipSize` | WP0 | sink tests; zip verified with `zipReader.ts` |
 | WP4 | `rtc/lanes.ts` (lane 0 via `Signaling`, lanes 1..N via `ctrl`, ICE restart, path type) | WP0 (WP1 for real use) | two-page smoke in e2e |
 | WP5 | UI (all screens and copy in §4, §11, §12) against mocked `Signaling`/engine | WP0 | screenshots at 1100 px and 390 px |
-| WP6 | Integration, `e2e/file-transfer.spec.ts`, `scripts/file-transfer-bench/`, README, tuning from bench results | all | all repo checks + e2e + bench table |
+| WP6 | Integration, `e2e/file-transfer.spec.ts`, `scripts/file-transfer-bench/`, README, tuning from bench results | all | all repo checks + e2e + bench table (done; see §3) |
 
 Repo checks before reporting: `npm run typecheck`, `npm run check`, `npm test`, `npx vite build`,
 `E2E_PORT=<port> npx playwright test`.
