@@ -247,7 +247,7 @@ Every response is JSON with `cache-control: no-store`. Errors are `{ error: <cod
 | `request` | `to` | `{ pair }` or error `busy`/`gone`/`self`/`slow-down` | rate 1–2, `HGETALL` 1, `HSETNX` 1 (+`HDEL`+`HSETNX` on stale) ≈ 4–6 |
 | `respond` | `pair, accept: boolean` | `{ ok }` | rate 1–2, `HGETALL` 1, `HSET` or `HDEL` 1 ≈ 3–4 |
 | `connected` | `pair` | `{ ok }` (sets claim state `connected`) | `HGETALL` 1, `HSET` 1 |
-| `release` | `pair` | `{ ok }` (either side; deletes the claim) | `HGETALL` 1, `HDEL` 1 |
+| `release` | `pair`, `gone?` | `{ ok }` (either side; deletes the claim). With `gone` (the session ended by `bye` or loss, so the other end may have closed its tab without `leave`, as iOS does): the other end's entry is set to not busy and goes stale `peerGoneGraceMs` (20 s) later unless it polls again | `HGETALL` 1, `HDEL` 1 (+ `HSET` 1 with `gone`) |
 | `signal` | `pair, to, payload` | `{ ok }` | rate 1–2, `HGETALL` 1, `SET EX` 1 ≈ 3–4 |
 | `read` | `pair` | `{ payload } \| { payload: null }` | `HGET` peer field 1 (auth), `GETDEL` 1 |
 | `leave` | — | `{ ok }` (removes own field and own claims; sent with `keepalive`/`sendBeacon` on `pagehide`) | `HGETALL` 1, `HDEL` 1 |

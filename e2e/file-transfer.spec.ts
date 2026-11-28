@@ -225,6 +225,27 @@ test("presence, request and accept, then a folder batch both ways as streamed zi
 	await expect(c.page.getByRole("button", { name: /^Brisk Fox, same network$/ })).toBeVisible({ timeout: 20_000 });
 });
 
+test("a peer whose tab dies without leave stops showing as busy, then goes", async ({ browser }) => {
+	const ip = nextIp();
+	const a = await open(browser, ip, "Brisk Fox", "🦊");
+	const b = await open(browser, ip, "Calm Otter", "🦦");
+	await connect(a, b);
+	// iOS can kill a tab without its leave reaching the server: drop B's leave, then close B.
+	await b.ctx.route("**/api/file-transfer", (route) =>
+		route.request().postData()?.includes('"action":"leave"') ? route.abort() : route.continue(),
+	);
+	peers.splice(peers.indexOf(b), 1);
+	await b.ctx.close();
+
+	await expect(a.page.getByRole("heading", { name: "Connection to Calm Otter lost" })).toBeVisible({ timeout: 30_000 });
+	await a.page.getByRole("button", { name: "Back to everyone" }).click();
+	// B's entry still says busy, but A's release marked it gone: listed free at most, then dropped
+	// once the 20 s grace runs out (and never "in a transfer").
+	const tile = a.page.getByRole("button", { name: /^Calm Otter/ });
+	await expect(a.page.getByText("In a transfer")).toHaveCount(0);
+	await expect(tile).toHaveCount(0, { timeout: 40_000 });
+});
+
 // Chrome on an iPhone is WebKit: a service-worker download stalls at 0 KB there, so it must take the
 // memory fallback, say "Received" (not "Saved"), and keep the zip for "Save .zip".
 const IPHONE_CHROME =

@@ -31,6 +31,7 @@ export const SERVER = {
 	signalTtlS: 60,
 	rateTtlS: 90,
 	peerStaleMs: 150_000,
+	peerGoneGraceMs: 20_000,
 	claimMs: 30_000,
 	connectedClaimMs: 90_000,
 	goneMs: 30_000,
@@ -818,6 +819,18 @@ export class FileTransfer {
 			.map(([target]) => claimField(target));
 		const sig = sigField(b.pair);
 		if (fields.length) await this.kv.hdel(K.peers, ...fields, ...(sig in v.fields ? [sig] : []));
+		// The session ended because the other end said bye or went silent: it may have closed its tab
+		// without a `leave` (iOS kills tabs without pagehide). Clear its busy flag and let its entry go
+		// stale `peerGoneGraceMs` from now, unless it polls again before then, which a live page does.
+		const other = v.byPair(b.pair);
+		if (b.gone === true && other && (other[0] === peer || other[1].from === peer)) {
+			const id = other[0] === peer ? other[1].from : other[0];
+			const e = v.peers.get(id);
+			if (id !== peer && e) {
+				const seen = Math.min(e.seen, v.now - SERVER.peerStaleMs + SERVER.peerGoneGraceMs);
+				await this.kv.hset(K.peers, { [id]: JSON.stringify({ ...e, busy: false, seen }) });
+			}
+		}
 		return { ok: true };
 	}
 
