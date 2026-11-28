@@ -1,6 +1,6 @@
 # Toolbox
 
-Small, fast tools that run entirely in the browser. No uploads, no accounts, no size limits. (The one exception is the shared room, whose whole point is to pass text between devices through a server.)
+Small, fast tools that run entirely in the browser. No uploads, no accounts, no size limits. (The exceptions: the shared room, whose whole point is to pass text between devices through a server, and File Transfer, which uses a server only to find the other device; the files go directly between the two browsers.)
 
 | Tool | Path | What it does |
 |---|---|---|
@@ -10,6 +10,7 @@ Small, fast tools that run entirely in the browser. No uploads, no accounts, no 
 | **Zip / Unzip** | `/unzip` | Browse ZIP, 7z, RAR and other archives, preview text and images, and extract files locally. Or pack files and folders into a new ZIP, 7z or TAR.GZ, optionally with an AES-256 password. |
 | **PDF Editor** | `/pdf-edit` | Adds text, drawings, marks, signatures and images to PDF pages and downloads a new copy. |
 | **Shared room** | `/room` | A text box all your devices share: make a room, tap it on another device, paste. Rooms are public and end when their creator leaves, or after 2 hours. |
+| **Blazing Fast File Transfer** | `/file-transfer` | Sends photos, videos and whole folders straight to another device over WebRTC, striped across several connections. The other person accepts and gets one .zip download (or, opt-in, the files in a folder). Nothing is uploaded. |
 
 ## Stack
 
@@ -23,6 +24,7 @@ Small, fast tools that run entirely in the browser. No uploads, no accounts, no 
 | Zip | own writer (`zip.ts`) and reader (`src/lib/zipReader.ts`) | Correct EPUB `mimetype` entry, ZIP64, random access; native `DecompressionStream` for reading |
 | Styling | CSS Modules + `tokens.css` | Zero runtime |
 | Shared room | One Vercel Function (`api/rooms.ts`) + Upstash Redis, polled | Vercel Functions can't hold WebSockets open; a room is tiny state, so polling a key-value store is enough |
+| File Transfer | WebRTC data channels, several peer connections per pair; one Vercel Function (`api/file-transfer.ts`) + the same Redis for presence and the first handshake | No relay and no file bytes on a server; striping beats the per-connection limit on long links |
 | Tests | Vitest (unit), Playwright (headless e2e) | |
 
 ## How "no size limit" works
@@ -85,6 +87,37 @@ Small, fast tools that run entirely in the browser. No uploads, no accounts, no 
   - **Cost:** about 4 Redis commands and 1.33 MiB of Redis bandwidth per MiB uploaded, about 2 commands and 1.33 MiB per MiB downloaded. 10 GB of bandwidth a month is roughly 3.7 GiB of files shared and downloaded once each. Chunk requests count toward the same per-IP limit as other writes.
 - **Local dev and tests need no database.** `scripts/api-dev.ts` serves `/api/rooms` from `npx vite` and `vite preview` with an in-memory store that mimics Redis, expiry included. With `ROOM_KV_*` set in the environment, the same code talks to Upstash.
 
+## How File Transfer works
+
+Design and decisions: [docs/file-transfer/SPEC.md](docs/file-transfer/SPEC.md). Code: `src/tools/file-transfer/`, `api/file-transfer.ts`, `public/ft-sw.js`.
+
+- **Finding each other.** Each tab polls `api/file-transfer.ts` (`presence.ts`): every 3 s while someone uses the page, 10 s when idle or with the *Hidden* switch on (so invite-link requests still arrive), 60 s in a hidden tab, 1 s while a request waits for an answer, and not at all after 2 hours without use. A device keeps a random id and secret in `localStorage`; the server stores only a hash of the secret. Peers on the same IPv4 address (or IPv6 /64) get a "Same network" badge; IPs are kept only as salted HMACs and never reach other clients.
+- **Connecting.** A click asks the other person; their *Accept* turns an atomic claim (`HSETNX`) into a handshake. Only the first connection's offer and answer go through Redis (a 60 s mailbox, ≤ 16 KiB each, non-trickle ICE, STUN only, no TURN). Everything after that travels over that connection's `ctrl` channel: 5 more connections ("lanes", 6 in all), ICE restarts, file lists, accepts and cancels.
+- **Moving bytes** (`engine/`). Files are cut into ranges that the lanes pull one after another. Frames are 256 KiB (or the connection's SCTP max message size, if smaller) with a 16-byte header; each lane keeps ≤ 8 MiB buffered and ≤ 16 MiB unacknowledged, and the receiver acks what it has written. A lost lane's unacked ranges go to the others.
+- **Receiving, by default: one streamed .zip, no prompt.** The page feeds a store-only ZIP64 archive (folders and modified dates kept, CRC32 as it goes) to a service worker (`public/ft-sw.js`), which answers a hidden download URL with an exact `Content-Length`: one ordinary download per batch, `Photos from <name>.zip`, started by the click on *Accept*. The zip must be written in order, so the lanes work through the batch as one stream in 1 MiB ranges within a 64 MiB reorder window. When the range at the head stalls for a second (an SCTP connection backing off after losses), its lane's unacknowledged ranges are offered to the other lanes as well. Browsers where the service worker can't start a download (Safari, iOS) build the same zip in memory, up to 1 GiB.
+- **Receiving into a folder** (opt-in, Chromium desktop): an in-page explanation, then the browser's folder picker and its permission prompt. Files land at their sanitized paths, identical files already there are skipped, and lanes write ranges in any order (at most 16 files open at once, more only while the disk catches up, so a slow lane can't deadlock it). Browsers can't set modified dates on files they write; the zip keeps them.
+- **Prompt policy.** No `confirm`/`alert`, no "Leave site?", no notification permission (a hidden tab shows "(1) Request from …" in its title instead), exactly one download per batch, and the folder picker only after the page explains it. Folders are sent by drag and drop (no prompt); the *Choose folder* button (where the browser asks) exists only on touch devices.
+- **Browser support.** Chrome and Edge on a computer: everything. Firefox: send and zip receive. Safari and iOS: send, and receive through the memory fallback (≤ 1 GiB; iOS only while the tab stays in front). Feature detection only.
+- **Speed.** `node scripts/file-transfer-bench/bench.ts` runs the real engine and lanes between two headless Edge processes, directly or through a Node UDP proxy that adds delay, loss and a 1 Gbit/s cap. The proxy itself tops out around 65 MB/s on this machine (the spike measured ~32), so figures near that are its ceiling rather than the transfer's. MB/s, unordered (folder) / zip-ordered, November 2026 on a Ryzen 9 5900X; details in [`scripts/file-transfer-bench/results/`](scripts/file-transfer-bench/results/):
+
+  | Link | 1 lane | 4 lanes | 6 lanes (default) | 8 lanes |
+  |---|---:|---:|---:|---:|
+  | Same machine, direct | 57.0 / 37.8 | 55.8 / 53.6 | 56.1 / 55.0 | 56.3 / 54.8 |
+  | 20 ms RTT, 1 Gbit/s | 0.1* / 46.0 | 60.8 / 61.4 | 61.2 / 62.7 | 60.6 / 65.1 |
+  | 50 ms RTT, 1 Gbit/s | 0.3* / 0.3* | 15.4 / 20.2 | 64.1 / 66.3 | 65.3 / 60.3 |
+  | 100 ms RTT, 1 Gbit/s | 0.0* / 0.0* | 14.2 / 16.8 | 20.5 / 30.2 | 34.3 / 28.6 |
+  | 50 ms RTT + 0.1% loss | 0.8 / 0.8 | 3.4 / 2.8 | 5.3 / 3.5 | 7.4 / 5.7 |
+
+  \* A single connection through the proxy stalled for most of the run (SCTP backing off after packets were lost on the way into the browser); with several lanes those stalls disappear in the total. A real long-distance test between two machines is still to do.
+
+- **Server limits.** At most 100 peers on the page (503 `full`), 6 per IP (429 `too-many-here`), 60 requests, answers and handshake messages per IP per minute, 8 handshake messages per pair, 50 peers listed per poll. Every key starts with `toolbox:ft:` and expires (peers hash 180 s, mailbox 60 s, rate counters 90 s).
+- **Quota.** Upstash's free tier (500K commands a month) is shared with the room and other projects, so File Transfer aims to stay under ~150K: an active tab costs ~3,600 commands an hour, an idle one ~1,080, a hidden (or connected and hidden) one ~180, one connection ~100–130. For example 30 active, 20 idle and 100 hidden tab-hours plus 50 connections come to about 154K. A poll returns at most ~20 KB (typically under 2 KB).
+- **Environment** (Vercel project settings):
+  - `FILE_TRANSFER_IP_SALT`: **required in production**; without it every call answers 503 `no-salt`. Any long random secret (`openssl rand -hex 32`); it keys the IP hashes, and changing it only resets the per-IP counters and "Same network" matching. Local dev uses a random per-process salt.
+  - `FILE_TRANSFER_DISABLED=1`: kill switch. Every call answers 503 `disabled` without touching Redis; the page says "File Transfer is paused right now."
+  - `ROOM_KV_REST_API_URL` / `ROOM_KV_REST_API_TOKEN`: the same Upstash database as the room. Local dev and the e2e tests use the in-memory store in `scripts/api-dev.ts`.
+- **Privacy.** Connecting shows each side's IP addresses to the other (inherent to WebRTC; the page says so). WebRTC encrypts every connection (DTLS); there is no extra app-level encryption or verification code, so the signaling server could in principle sit in the middle.
+
 ## Adding a tool
 
 1. Create `src/tools/<id>/index.tsx` with a default-export component.
@@ -107,11 +140,12 @@ npx playwright test         # headless end-to-end tests (uses installed Edge)
 node scripts/spike.ts [file] # convert a real file from the command line → out/
 node scripts/pdf-pages.ts <file.pdf> [22|20-24] [--json] # print the positioned lines the engine reads
 node scripts/pdf-txt-ocr.ts <file.pdf> poetry|prose [scans|22|20-24] [--flags] [--show 22] # PDF → TXT with OCR merged in
+node scripts/file-transfer-bench/bench.ts [--quick] # File Transfer throughput matrix in headless Edge (~15 min) → results/<date>.md
 ```
 
 ## Deploy
 
-Push to GitHub and import the repo in Vercel; it detects Vite automatically. `vercel.json` adds the SPA fallback and long-lived caching for hashed assets, including the WASM. The SPA fallback skips `/api/`, where Vercel serves the shared-room function; it needs the Upstash Redis integration (Storage tab) connected with the `ROOM_` prefix.
+Push to GitHub and import the repo in Vercel; it detects Vite automatically. `vercel.json` adds the SPA fallback and long-lived caching for hashed assets, including the WASM. The SPA fallback skips `/api/`, where Vercel serves the shared-room function; it needs the Upstash Redis integration (Storage tab) connected with the `ROOM_` prefix. File Transfer's function (`api/file-transfer.ts`) uses the same store and also needs `FILE_TRANSFER_IP_SALT` (see above). `vercel.json` serves `/ft-sw.js` with `Cache-Control: no-cache`, so a new service worker is picked up at once.
 
 `SOURCE_URL` in `src/app/config.ts` points users of the site to this repo, as AGPL-3.0 requires.
 
