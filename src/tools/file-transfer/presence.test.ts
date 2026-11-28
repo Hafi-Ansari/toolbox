@@ -152,7 +152,7 @@ describe("presence: poll tiers", () => {
 		expect(gaps(a.polls(before - 10_000))).toContain(3000);
 	});
 
-	it("slows to 60 s in a hidden tab and when switched to Hidden", async () => {
+	it("slows to 60 s in a hidden tab, and to 10 s when switched to Hidden (60 s once the tab hides too)", async () => {
 		const { clock, page } = world();
 		const a = page(0xa);
 		await clock.advance(0);
@@ -170,8 +170,13 @@ describe("presence: poll tiers", () => {
 		expect(last?.action).toBe("poll");
 		expect(last?.body.hidden).toBe(true);
 		start = clock.t;
-		await clock.advance(120_000);
-		expect(gaps(a.polls(start + 1))).toEqual([60_000]);
+		await clock.advance(60_000);
+		expect(new Set(gaps(a.polls(start + 1)))).toEqual(new Set([10_000]));
+		a.setHidden(true);
+		await clock.advance(10_000);
+		start = clock.t;
+		await clock.advance(180_000);
+		expect(new Set(gaps(a.polls(start + 1)))).toEqual(new Set([60_000]));
 		expect(a.store).toHaveBeenLastCalledWith(expect.objectContaining({ hidden: true }));
 	});
 
