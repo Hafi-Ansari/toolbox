@@ -1,10 +1,12 @@
-# Send files — implementation spec (v1)
+# Blazing Fast File Transfer — implementation spec (v1)
 
-Status: draft for review. Branch `send`. Tool name and path are placeholders: **"Send files" at `/send`**.
+Status: approved design, ready to implement. Branch `send`. The tool is **"Blazing Fast File Transfer" at
+`/file-transfer`** (registry `id: "file-transfer"`). Page headings and the registry use the full name; running UI copy
+may shorten it to "File Transfer".
 
 This spec is written for the agents who will build the tool. It is meant to be complete on its own: every
 decision already made is stated as a requirement (**MUST** / **SHOULD**), and the remaining open questions are
-listed in §17. Read `CLAUDE.md` (how to work in this repo: worktrees, ports, headless browsers, shared files,
+listed in §18 (all decided on 2026-11-27). Read `CLAUDE.md` (how to work in this repo: worktrees, ports, headless browsers, shared files,
 checks) and `README.md` (stack, "Adding a tool", "How the shared room works") before starting.
 
 ---
@@ -14,7 +16,7 @@ checks) and `README.md` (stack, "Adding a tool", "How the shared room works") be
 Move **tens of GB** of photos and videos (RAWs, JPEGs, video files) between two people **as fast as their
 networks allow**, using only a web page. Nothing is installed and no file data goes through any server.
 
-Each person opens `/send`. They see everyone else on the page, click a peer, the other person accepts, and the
+Each person opens `/file-transfer`. They see everyone else on the page, click a peer, the other person accepts, and the
 two browsers connect directly over WebRTC. Either side can then send files.
 
 ### Goals
@@ -40,13 +42,13 @@ two browsers connect directly over WebRTC. Either side can then send files.
 
 | Source | What to take | How |
 |---|---|---|
-| `api/rooms.ts` | `Kv` interface, `redisKv()`, `memoryKv()`, `clientIp()`, `json()`, store selection `rooms()`, rate limiter `allowWrite()`, name lists `ADJECTIVES`/`ANIMALS` | **Copy** the parts you need into `api/send.ts`; don't import (the function is self-contained on purpose) |
-| `scripts/api-dev.ts` | Serves `api/*.ts` handlers from `vite` / `vite preview` | Add `/api/send` (**shared file**) |
+| `api/rooms.ts` | `Kv` interface, `redisKv()`, `memoryKv()`, `clientIp()`, `json()`, store selection `rooms()`, rate limiter `allowWrite()`, name lists `ADJECTIVES`/`ANIMALS` | **Copy** the parts you need into `api/file-transfer.ts`; don't import (the function is self-contained on purpose) |
+| `scripts/api-dev.ts` | Serves `api/*.ts` handlers from `vite` / `vite preview` | Add `/api/file-transfer` (**shared file**) |
 | `src/tools/room/index.tsx`, `Room.module.css` | `useVisiblePoll()`, lobby grid and tile markup (`.grid`, `.tile`, `.emoji`, `.tileText`, `.tileName`, `.badge`, `.muted`, `.empty`) | **Copy** into the tool; don't extract a shared component |
 | `src/tools/room/client.ts` | `call()` fetch wrapper, sessionStorage helpers, the `keepalive`/`sendBeacon` leave | Copy and adapt |
 | `src/tools/unzip/create/collect.ts` | Folder traversal from drag and drop (`webkitGetAsEntry` + `readAll`), `fromInput()` | Copy the drag-and-drop and file-input parts (not `showDirectoryPicker`) |
 | `src/lib/zipWriter.ts` | `ZipWriter.addStream(name, size)`: data descriptors, ZIP64, running CRC32, `finish()` | **Import.** Small extension needed for modified times (§8.2, **shared file**) |
-| `src/lib/confirm.tsx` | In-page confirmation dialog | Import. It lives on branch `ui-polish` and may not be on `main` yet: rebase on main once it's merged |
+| `src/lib/confirm.tsx` | `confirm()` (in-page confirmation) and `explainOnce()` (explains a browser prompt before it appears, once per device) | Import. `confirm()` comes from branch `ui-polish`, `explainOnce()` from `no-prompts`. Start once both are merged into `main` (or rebase onto them) |
 | `src/lib/ui.tsx` | `Button`, `Card`, `Note`, `Progress`, `FileDrop`, `Chip` | Import |
 | WebDrop (`C:\Users\Hafi\Developer\drop\webdrop`, MIT, same author) `web/src/lib/transfer.ts`, `session.ts`, `tuning.ts` | Backpressure loop (`bufferedAmount` high/low water + receiver ack window), read-ahead with `File.slice()`, `RateMeter`, `PeerSession` (negotiated channels, ICE restart, offerer-only renegotiation) | Adapt. **Remove** `SecureLink`, `crypto.ts` and `framing.ts` encryption. **Don't copy** `sinks.ts`/`download.ts` (see below) |
 
@@ -91,7 +93,7 @@ Other findings:
 
 ### 4.1 Newcomer
 
-1. Opens `/send`. Within about a second they see **"You're Brisk Fox 🦊"** with an *Edit* link and a
+1. Opens `/file-transfer`. Within about a second they see **"You're Brisk Fox 🦊"** with an *Edit* link and a
    *Visible / Hidden* switch (visible by default), and a grid of other people on the page, nearest first. Peers
    on the same network carry a **"Same network"** badge.
 2. Empty grid: "No one else is here yet. Open this page on the other device, or send someone your invite link."
@@ -102,11 +104,11 @@ Other findings:
 1. Bob clicks Alice's tile. Tile reads "Asking Alice…" with a *Cancel* button. Others now see Alice as busy
    ("In a transfer"), greyed out and not clickable.
 2. Alice sees an in-page panel (not a browser dialog): **"Brisk Fox wants to connect"** · *Accept* / *Decline*.
-   When her tab is hidden, the tab title becomes "(1) Request from Brisk Fox · Send files". No
+   When her tab is hidden, the tab title becomes "(1) Request from Brisk Fox · File Transfer". No
    `Notification` permission is used, because that is a browser prompt.
 3. After Alice accepts, both see "Connecting…", then **"Connected to Brisk Fox · Direct"** (§11 for failures).
    This takes 1–3 s after the accept.
-4. Invite link: `/send?to=<peerId>` opens the page with that peer highlighted at the top and a **Connect to Calm
+4. Invite link: `/file-transfer?to=<peerId>` opens the page with that peer highlighted at the top and a **Connect to Calm
    Otter** button. If they're offline or hidden: "Calm Otter isn't here right now."
 
 ### 4.3 Sending (either side, once connected)
@@ -142,9 +144,9 @@ through `confirm()` from `src/lib/confirm.tsx` when a transfer is active.
 ```
             Vercel                                      Browsers
 ┌───────────────────────────────┐        ┌──────────────┐      ┌──────────────┐
-│ /send (static SPA chunk)      │        │  Peer A tab  │      │  Peer B tab  │
-│ public/send-sw.js (zip stream)│        │              │      │              │
-│ api/send.ts ──► Upstash Redis │◄─poll──┤ presence,    │      │ presence,    ├─poll─►
+│ /file-transfer (SPA chunk)    │        │  Peer A tab  │      │  Peer B tab  │
+│ public/ft-sw.js (zip stream)  │        │              │      │              │
+│ api/file-transfer.ts ─► Redis  │◄─poll──┤ presence,    │      │ presence,    ├─poll─►
 │   presence hash, claims,      │        │ claim,       │      │ claim,       │
 │   handshake mailbox (KB)      │        │ lane 0 SDP   │      │ lane 0 SDP   │
 └───────────────────────────────┘        └──────┬───────┘      └──────┬───────┘
@@ -160,7 +162,7 @@ opens goes over the ctrl channel: extra lanes, ICE restarts, manifests, acks, ca
 
 ---
 
-## 6. Server: `api/send.ts`
+## 6. Server: `api/file-transfer.ts`
 
 A single Vercel Function. Every call is a `POST` with a JSON body, so peer secrets never appear in URLs or logs.
 It is self-contained, like `api/rooms.ts`: it imports only from npm.
@@ -178,13 +180,13 @@ It is self-contained, like `api/rooms.ts`: it imports only from npm.
 
 ### 6.2 Redis keys
 
-All keys start with `toolbox:send:`, all have TTLs, and none are found by SCAN or KEYS.
+All keys start with `toolbox:ft:`, all have TTLs, and none are found by SCAN or KEYS.
 
 | Key | Type | Content | TTL |
 |---|---|---|---|
-| `toolbox:send:peers` | hash | field `<peerId>` → JSON `PeerEntry`; field `claim:<targetId>` → JSON `Claim` | `EXPIRE 180` on every write |
-| `toolbox:send:sig:<pairId>:<toPeerId>` | string | one handshake message (≤ 16 KiB JSON) | `EX 60` |
-| `toolbox:send:rl:<ipHash>:<minute>` | string counter | writes per IP per minute | `EX 90` |
+| `toolbox:ft:peers` | hash | field `<peerId>` → JSON `PeerEntry`; field `claim:<targetId>` → JSON `Claim` | `EXPIRE 180` on every write |
+| `toolbox:ft:sig:<pairId>:<toPeerId>` | string | one handshake message (≤ 16 KiB JSON) | `EX 60` |
+| `toolbox:ft:rl:<ipHash>:<minute>` | string counter | writes per IP per minute | `EX 90` |
 
 ```ts
 interface PeerEntry {
@@ -259,8 +261,8 @@ Rules:
 - **Caps:** at most **100 peer fields** in total (a new peer gets 503 `full`) and at most **6 peers per IP
   hash** (429 `too-many-here`). `request`, `respond` and `signal` share a per-IP limit of **60 per minute**.
   Polls are not rate-limited, so they cost no extra commands; the peer caps bound them.
-- **Kill switch:** env `SEND_DISABLED=1` makes every action return 503 `disabled` without touching Redis. The UI
-  shows "Send files is paused right now."
+- **Kill switch:** env `FILE_TRANSFER_DISABLED=1` makes every action return 503 `disabled` without touching Redis. The UI
+  shows "File Transfer is paused right now."
 
 ### 6.4 `Kv` subset
 
@@ -275,7 +277,7 @@ Keep `automaticDeserialization: false`, as rooms does. Store selection mirrors `
 `ROOM_KV_REST_API_URL`/`TOKEN` (the same shared database), memory when not on Vercel, 503 `no-store` when
 deployed without a store.
 
-### 6.5 Client poll state machine (`src/tools/send/presence.ts`)
+### 6.5 Client poll state machine (`src/tools/file-transfer/presence.ts`)
 
 | State | When | Poll every |
 |---|---|---|
@@ -302,10 +304,10 @@ with the Room tool and other projects. Vercel Hobby allows about 1M function inv
 | One tab, `hidden` / `connected` hidden | ~180 per hour |
 | One connection (request → lanes open) | ~100–130 |
 
-**Target: Send files stays under ~150K commands/month.** For example: 30 active tab-hours (108K), 20 idle
+**Target: File Transfer stays under ~150K commands/month.** For example: 30 active tab-hours (108K), 20 idle
 tab-hours (22K), 100 hidden tab-hours (18K), and 50 connections (6K) add up to about 154K.
 
-The safeguards are the tiers, the 2-hour `away` cutoff, the caps, `SEND_DISABLED`, and polling only while
+The safeguards are the tiers, the 2-hour `away` cutoff, the caps, `FILE_TRANSFER_DISABLED`, and polling only while
 visible.
 
 **Bandwidth:** `HGETALL` returns at most about 100 fields of ~200 bytes, so at most 20 KB per poll; typical use
@@ -326,9 +328,9 @@ is under 2 KB.
   restarts included, as WebDrop's `PeerSession` does, so there is no glare.
 - **Non-trickle ICE:** `setLocalDescription()`, then wait for `iceGatheringState === "complete"` or **3 s**,
   then send `localDescription.sdp` whole.
-- Lane 0's offer and answer go through `api/send.ts` (`signal`/`read`). Lanes 1..N-1 are negotiated over `ctrl`
+- Lane 0's offer and answer go through `api/file-transfer.ts` (`signal`/`read`). Lanes 1..N-1 are negotiated over `ctrl`
   (`lane-offer` / `lane-answer`), and so are ICE restarts (`restart-offer` / `restart-answer`).
-- **Lane count:** `N = tuning.lanes` (**default 6**; see §17). All extra lanes are opened in parallel right after
+- **Lane count:** `N = tuning.lanes` (**default 6**, decided; see §18). All extra lanes are opened in parallel right after
   `hello`. A transfer may start as soon as lane 0 is open and uses lanes as they open.
 - **Connect timeout:** lane 0 not open after **15 s** → `failed-direct` (§11). An extra lane not open after 15 s
   is dropped quietly.
@@ -420,7 +422,7 @@ for each range pulled:
     dc.send(frame)              // header + payload; reuse one frame buffer per lane
 ```
 
-### 7.5 Constants (`src/tools/send/tuning.ts`, mutable for the benchmark)
+### 7.5 Constants (`src/tools/file-transfer/tuning.ts`, mutable for the benchmark)
 
 | Name | Value | Why |
 |---|---|---|
@@ -477,14 +479,14 @@ interface ReceiveSink {
 - Duplicate paths within a batch get ` (2)`, ` (3)` and so on before the extension.
 - Applied on the **receiver**, whatever the sender claims.
 
-### 8.2 Zip stream, the default and prompt-free (`sinks/zipStream.ts` + `public/send-sw.js`)
+### 8.2 Zip stream, the default and prompt-free (`sinks/zipStream.ts` + `public/ft-sw.js`)
 
 One download, `Photos from <peer name>.zip`, stored (method 0, no compression) and ZIP64. It is written through
 `ZipWriter.addStream(path, size)` from `src/lib/zipWriter.ts`, which already computes CRC32 as data arrives and
 writes data descriptors and ZIP64 records.
 
-- **Service worker** `public/send-sw.js`: plain JS, not bundled, served at `/send-sw.js`, registered with
-  `scope: "/send/dl/"`. On `fetch` for `/send/dl/<id>/<name>.zip`, it answers with
+- **Service worker** `public/ft-sw.js`: plain JS, not bundled, served at `/ft-sw.js`, registered with
+  `scope: "/file-transfer/dl/"`. On `fetch` for `/file-transfer/dl/<id>/<name>.zip`, it answers with
   `new Response(readableStream, { headers })`:
   - `Content-Type: application/zip`
   - `Content-Disposition: attachment; filename*=UTF-8''…` (reuse `attachment()` from `api/rooms.ts` as a
@@ -512,8 +514,8 @@ writes data descriptors and ZIP64 records.
   faster `crc32` in `zipWriter.ts`, which is a flagged shared edit.
 - Zip mode **cannot resume**: the download stream is gone once the connection breaks (§10).
 - The **vercel.json SPA rewrite** must not swallow the service worker or its URLs. Static files win over rewrites
-  on Vercel, so `/send-sw.js` is served as-is. `/send/dl/*` is only ever answered by the service worker.
-  Optionally add `Cache-Control: no-cache` for `/send-sw.js` (**shared file** `vercel.json`).
+  on Vercel, so `/ft-sw.js` is served as-is. `/file-transfer/dl/*` is only ever answered by the service worker.
+  Optionally add `Cache-Control: no-cache` for `/ft-sw.js` (**shared file** `vercel.json`).
 
 ### 8.3 Folder, opt-in, Chromium desktop only (`sinks/folder.ts`)
 
@@ -521,8 +523,8 @@ The fastest mode: no unzip, and identical files are skipped. **It causes browser
 then Chrome's "Let site edit files?". So:
 
 - **Show an in-page explainer first:** "Your browser will ask you to pick a folder, then ask permission to save
-  files into it. Send files only writes the files Calm Otter is sending." *Continue* / *Back*.
-- Then `showDirectoryPicker({ mode: "readwrite", id: "send-receive" })`.
+  files into it. File Transfer only writes the files Calm Otter is sending." *Continue* / *Back*.
+- Then `showDirectoryPicker({ mode: "readwrite", id: "file-transfer-receive" })`.
 - Offer it only when `typeof showDirectoryPicker === "function"` and the device isn't touch-only.
 - `begin()`: for each file, if the sanitized relative path exists with the same size, add it to `skip`.
   Otherwise, if the name exists, write `name (1).ext`.
@@ -594,8 +596,8 @@ No `localStorage`/IndexedDB persistence of transfer state in v1.
 | `busy` | already in a transfer | "Calm Otter is in another transfer." |
 | `failed-direct` | lane 0 not open in 15 s | "Couldn't connect directly. One of you is probably on a network that blocks this, which is common on mobile data, work and school networks. Try another network, such as home Wi-Fi." |
 | `signal-error` | API errors during the handshake | "Couldn't reach the server. Check your connection and try again." |
-| `disabled` | `SEND_DISABLED` | "Send files is paused right now." |
-| `full` / `too-many-here` | caps | "Too many people are on Send files right now. Try again in a few minutes." / "Too many devices from your network are here. Close Send files on one of them." |
+| `disabled` | `FILE_TRANSFER_DISABLED` | "File Transfer is paused right now." |
+| `full` / `too-many-here` | caps | "Too many people are on File Transfer right now. Try again in a few minutes." / "Too many devices from your network are here. Close File Transfer on one of them." |
 
 ---
 
@@ -608,7 +610,7 @@ Use the shared kit (`Card`, `Button`, `Note`, `Progress`, `FileDrop`, `Chip`) an
 `send` only if needed (**shared file** `src/lib/Icon.tsx`).
 
 Screens and copy:
-- **Header:** h1 "Send files"; lead "Send photos and videos straight to another device. Nothing is uploaded: files
+- **Header:** h1 "Blazing Fast File Transfer"; lead "Send photos and videos straight to another device. Nothing is uploaded: files
   go directly between your browsers."
 - **Me bar:** `🦊 You're Brisk Fox` · *Edit name* (inline input, Enter saves) · switch *Visible* / *Hidden*
   (when hidden: "Others can't see you. People with your invite link can still connect.") · *Copy invite link*
@@ -645,7 +647,7 @@ at most every 5 s.
 - **Receiver safety:** nothing is saved before *Accept*. Paths are sanitized (§8.1). Memory is bounded (§7.3).
   Frames are validated. Files are offered only as downloads or written inside the chosen folder.
 - **Server abuse:** request validation (id regexes as in `api/rooms.ts`), caps, per-IP rate limits on writes,
-  16 KiB signal payloads, TTLs on everything, and the `SEND_DISABLED` kill switch. Any public endpoint can be used
+  16 KiB signal payloads, TTLs on everything, and the `FILE_TRANSFER_DISABLED` kill switch. Any public endpoint can be used
   to burn quota. The Room tool has the same exposure; watch the Upstash console.
 - **Public repo:** no secrets in code; `SEND_IP_SALT` lives only in the Vercel env.
 
@@ -673,48 +675,48 @@ Feature detection only, never user-agent sniffing:
 New files:
 
 ```
-api/send.ts                         Vercel Function (self-contained; copied Kv subset)
-public/send-sw.js                   zip streaming service worker (plain JS)
-src/tools/send/index.tsx            default export: the page
-src/tools/send/Peers.tsx, Connected.tsx, OfferCard.tsx, ProgressView.tsx, Send.module.css
-src/tools/send/types.ts             shared contracts: Ctrl, Ack, ManifestFile, ReceiveSink, Signaling, DataChannelLike
-src/tools/send/client.ts            api/send.ts calls (Signaling implementation)
-src/tools/send/presence.ts          poll state machine (§6.5)
-src/tools/send/rtc/lanes.ts         lane creation, in-band negotiation, ICE restart, path type
-src/tools/send/engine/frame.ts      frame + ack codec
-src/tools/send/engine/scheduler.ts  ranges, unordered/ordered policies, requeue
-src/tools/send/engine/sender.ts     per-lane send loops, read-ahead, backpressure
-src/tools/send/engine/receiver.ts   validation, reorder buffer, acks, progress
-src/tools/send/engine/meter.ts      RateMeter
-src/tools/send/sinks/zipStream.ts, zipSize.ts, folder.ts, memory.ts, test.ts, paths.ts
-src/tools/send/collect.ts           drag-and-drop folder traversal + file input (copied from unzip/create/collect.ts)
-src/tools/send/tuning.ts
-src/tools/send/*.test.ts            unit tests (vitest only picks up src/**/*.test.ts)
-e2e/send.spec.ts
-scripts/send-bench/                 benchmark harness (§16.3)
-docs/send/SPEC.md                   this file
+api/file-transfer.ts                         Vercel Function (self-contained; copied Kv subset)
+public/ft-sw.js                   zip streaming service worker (plain JS)
+src/tools/file-transfer/index.tsx            default export: the page
+src/tools/file-transfer/Peers.tsx, Connected.tsx, OfferCard.tsx, ProgressView.tsx, Send.module.css
+src/tools/file-transfer/types.ts             shared contracts: Ctrl, Ack, ManifestFile, ReceiveSink, Signaling, DataChannelLike
+src/tools/file-transfer/client.ts            api/file-transfer.ts calls (Signaling implementation)
+src/tools/file-transfer/presence.ts          poll state machine (§6.5)
+src/tools/file-transfer/rtc/lanes.ts         lane creation, in-band negotiation, ICE restart, path type
+src/tools/file-transfer/engine/frame.ts      frame + ack codec
+src/tools/file-transfer/engine/scheduler.ts  ranges, unordered/ordered policies, requeue
+src/tools/file-transfer/engine/sender.ts     per-lane send loops, read-ahead, backpressure
+src/tools/file-transfer/engine/receiver.ts   validation, reorder buffer, acks, progress
+src/tools/file-transfer/engine/meter.ts      RateMeter
+src/tools/file-transfer/sinks/zipStream.ts, zipSize.ts, folder.ts, memory.ts, test.ts, paths.ts
+src/tools/file-transfer/collect.ts           drag-and-drop folder traversal + file input (copied from unzip/create/collect.ts)
+src/tools/file-transfer/tuning.ts
+src/tools/file-transfer/*.test.ts            unit tests (vitest only picks up src/**/*.test.ts)
+e2e/file-transfer.spec.ts
+scripts/file-transfer-bench/                 benchmark harness (§16.3)
+docs/file-transfer/SPEC.md                   this file
 ```
 
 **Shared files touched.** Say so in the PR, as CLAUDE.md requires.
-- `src/tools/registry.ts`: one entry at the end (`id: "send"`, `path: "/send"`, `title: "Send files"`, icon,
+- `src/tools/registry.ts`: one entry at the end (`id: "file-transfer"`, `path: "/file-transfer"`, `title: "Blazing Fast File Transfer"`, icon,
   tags `["Files", "P2P"]`).
-- `scripts/api-dev.ts`: serve `/api/send`.
+- `scripts/api-dev.ts`: serve `/api/file-transfer`.
 - `src/lib/zipWriter.ts`: optional `modified` on `addStream` (existing output byte-identical; existing tests
   must pass); maybe a faster `crc32`.
-- `README.md`: tool table row plus a "How Send files works" section, including the quota numbers.
-- Possibly `vercel.json` (`/send-sw.js` cache header) and `src/lib/Icon.tsx` (`send` icon).
+- `README.md`: tool table row plus a "How File Transfer works" section, including the quota numbers.
+- Possibly `vercel.json` (`/ft-sw.js` cache header) and `src/lib/Icon.tsx` (`send` icon).
 - **No new dependencies.** If a test needs SHA-256 over chunks, use `crypto.subtle` per file in the test sink.
 
 ---
 
 ## 16. Testing
 
-### 16.1 Unit (vitest, `src/tools/send/*.test.ts`)
+### 16.1 Unit (vitest, `src/tools/file-transfer/*.test.ts`)
 
-- **`api/send.ts` with `memoryKv`** (pattern: `src/tools/room/server.test.ts`): registration and auth; tiers
+- **`api/file-transfer.ts` with `memoryKv`** (pattern: `src/tools/room/server.test.ts`): registration and auth; tiers
   don't matter server-side; list filtering (hidden, self, busy, near, sort, cap 50); staleness; atomic claim races
   (two requesters → one wins); stale claim takeover; mutual request; respond accept/decline and `gone:` markers;
-  signal pair checks, size limit and count limit; `read` with `GETDEL`; caps and rate limits; `SEND_DISABLED`;
+  signal pair checks, size limit and count limit; `read` with `GETDEL`; caps and rate limits; `FILE_TRANSFER_DISABLED`;
   missing salt in production. Count commands per action against the §6.3 table with a counting `Kv` wrapper.
 - **frame.ts:** header round trip, u64 offsets above 4 GiB, rejects.
 - **scheduler.ts:** small files are single ranges; the ≤ 2 writers per big file rule; ordered mode never exceeds
@@ -726,9 +728,9 @@ docs/send/SPEC.md                   this file
   `zipReader.ts` (CRCs checked).
 - **paths.ts:** traversal, reserved names, bidi, duplicates, lengths.
 
-### 16.2 End to end (`e2e/send.spec.ts`, headless Edge, your own `E2E_PORT`)
+### 16.2 End to end (`e2e/file-transfer.spec.ts`, headless Edge, your own `E2E_PORT`)
 
-- Two contexts → two pages on `/send`, with `addInitScript(() => { window.__sendTestSink = true })` on the
+- Two contexts → two pages on `/file-transfer`, with `addInitScript(() => { window.__sendTestSink = true })` on the
   receiver. If host candidates are hidden behind mDNS in headless runs, launch with
   `--disable-features=WebRtcHideLocalIpsWithMdns` in a project override inside the spec (don't change
   `playwright.config.ts`).
@@ -738,7 +740,7 @@ docs/send/SPEC.md                   this file
   event (parse with `zipReader.ts` and compare hashes).
 - No console errors (pattern from `e2e/pdf-txt.spec.ts`).
 
-### 16.3 Benchmark (`scripts/send-bench/`)
+### 16.3 Benchmark (`scripts/file-transfer-bench/`)
 
 Port the spike harness: two persistent Edge profiles (separate processes, headless), signaling through Node, and a
 **UDP impairment proxy**. For each lane, a `dgram` socket stands in for the offerer's host candidate: the answerer
@@ -746,7 +748,7 @@ is given only that candidate, and the offerer learns the answerer as peer-reflex
 of rtt/2, random loss, a shared per-direction token-bucket rate cap and a tail-drop buffer.
 
 Matrix: lanes {1, 2, 4, 6, 8} × RTT {0, 20, 50, 100 ms} × loss {0, 0.1%} × sink {discard, folder-like OPFS,
-ordered}. Record MB/s to `scripts/send-bench/results/<date>.md`.
+ordered}. Record MB/s to `scripts/file-transfer-bench/results/<date>.md`.
 
 The proxy caps at about 32 MB/s on Node, so also run **one real long-distance test** before tuning the defaults:
 two machines, different networks.
@@ -755,39 +757,36 @@ two machines, different networks.
 
 ## 17. Work packages
 
-Interfaces live in `src/tools/send/types.ts`. **WP0 lands first** and the others build on it in parallel, each
+Interfaces live in `src/tools/file-transfer/types.ts`. **WP0 lands first** and the others build on it in parallel, each
 agent in its own worktree and branch, merged in order WP1 → WP2/WP3/WP4 → WP5 → WP6.
 
 | WP | Scope | Depends on | Done when |
 |---|---|---|---|
 | WP0 | `types.ts`, `tuning.ts`, registry entry with a placeholder page | — | typecheck passes |
-| WP1 | `api/send.ts`, `scripts/api-dev.ts` route, `client.ts`, `presence.ts`, server tests | WP0 | §16.1 server tests |
+| WP1 | `api/file-transfer.ts`, `scripts/api-dev.ts` route, `client.ts`, `presence.ts`, server tests | WP0 | §16.1 server tests |
 | WP2 | `engine/*` with fakes | WP0 | §16.1 engine tests |
-| WP3 | `sinks/*`, `public/send-sw.js`, `zipWriter.ts` `modified`, `zipSize` | WP0 | sink tests; zip verified with `zipReader.ts` |
+| WP3 | `sinks/*`, `public/ft-sw.js`, `zipWriter.ts` `modified`, `zipSize` | WP0 | sink tests; zip verified with `zipReader.ts` |
 | WP4 | `rtc/lanes.ts` (lane 0 via `Signaling`, lanes 1..N via `ctrl`, ICE restart, path type) | WP0 (WP1 for real use) | two-page smoke in e2e |
 | WP5 | UI (all screens and copy in §4, §11, §12) against mocked `Signaling`/engine | WP0 | screenshots at 1100 px and 390 px |
-| WP6 | Integration, `e2e/send.spec.ts`, `scripts/send-bench/`, README, tuning from bench results | all | all repo checks + e2e + bench table |
+| WP6 | Integration, `e2e/file-transfer.spec.ts`, `scripts/file-transfer-bench/`, README, tuning from bench results | all | all repo checks + e2e + bench table |
 
 Repo checks before reporting: `npm run typecheck`, `npm run check`, `npm test`, `npx vite build`,
 `E2E_PORT=<port> npx playwright test`.
 
 ---
 
-## 18. Open decisions (for the site owner)
+## 18. Decisions (made by the site owner on 2026-11-27)
 
-1. **Default receive mode.** Recommended: **prompt-free streamed zip** by default, with "Save into a folder…" as
-   an opt-in on Chromium desktop. The alternative is folder by default on Chromium, which is faster with no
-   unzip, but always shows the browser's folder picker and permission prompt. Zip also keeps photo dates; folder
-   doesn't.
-2. **Tool name and path.** "Send files" at `/send` is a placeholder. Alternatives: "Beam", "Direct send", "Drop".
-3. **Default lane count.** 6 is proposed. 8 was best at 50 ms in the spike, 4 at 20 ms, and the 100 ms result is
-   unexplained. Decide after the WP6 benchmark plus one real long-distance test. An adaptive count (add lanes
-   while throughput rises) is a possible v1.1.
-4. **TURN later?** Cloudflare Realtime TURN has 1,000 GB/month free, with credentials minted by `api/send.ts`.
-   Relayed transfers use that quota quickly, so it would need a per-transfer size cap if added. Not in v1.
-5. **Usage guard.** Is the `SEND_DISABLED` kill switch plus watching the Upstash console enough? Or add a daily
-   command counter? That costs +1 command per request, about 33% more than a poll.
-6. **iOS.** Accept the memory fallback (≤ 1 GiB) for v1, or plan the share-sheet path (`navigator.share({ files })`
-   in batches to save into Photos) after testing on a real iPhone?
-7. **Folder-mode verification.** Run the manual 1,000-photo `close()` cost check on a real folder before choosing
-   folder as any default.
+1. **Default receive mode: the prompt-free streamed zip** (§8.2), in every browser. "Save into a folder…" stays an
+   opt-in on Chromium desktop, behind the in-page explanation.
+2. **Name and path: "Blazing Fast File Transfer" at `/file-transfer`.** Tool id and folder `file-transfer`, function
+   `api/file-transfer.ts`, Redis prefix `toolbox:ft:`, service worker `public/ft-sw.js`.
+3. **Default lane count: 6** (max 8). The WP6 benchmark and one real long-distance test still run, to report numbers
+   and catch regressions, not to choose the default. Adaptive lane counts are out of scope for v1.
+4. **No TURN relay.** Not in v1 and not planned. Peers that can't connect directly get the clear message in §11.
+5. **Usage guard: the `FILE_TRANSFER_DISABLED` kill switch plus watching the Upstash console.** No daily command
+   counter.
+6. **iOS: the in-memory fallback, up to 1 GiB** (`memoryMax`). No share-sheet path in v1.
+7. **Folder mode stays opt-in until it is verified.** Before folder mode could become a default anywhere, someone must
+   run the manual check of write cost into a real folder (1,000 photos, timing `createWritable` and `close()` per
+   file) and record the result here. Until then, the default stays the zip stream (decision 1).
