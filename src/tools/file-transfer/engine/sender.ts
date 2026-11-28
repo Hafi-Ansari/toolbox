@@ -59,11 +59,33 @@ export class BatchSender {
 	private readonly o: SenderOptions;
 	private readonly lanes = new Map<number, SendLane>();
 	private stopped = false;
+	/** Ordered mode: watches the contiguous mark and hedges a stuck head range (`tuning.hedgeMs`). */
+	private hedgeTimer: ReturnType<typeof setInterval> | null = null;
 	/** Largest `bufferedAmount` seen right after a send, for tests and the benchmark. */
 	maxBuffered = 0;
 
 	constructor(o: SenderOptions) {
 		this.o = o;
+		if (o.sched.ordered) {
+			const every = o.tuning.hedgeMs;
+			let mark = o.sched.ackedContiguous;
+			let since = performance.now();
+			this.hedgeTimer = setInterval(
+				() => {
+					const c = o.sched.ackedContiguous;
+					const now = performance.now();
+					if (c !== mark) {
+						mark = c;
+						since = now;
+					} else if (now - since >= every && this.lanes.size > 1) {
+						// Stuck: let another lane carry the head range. Again every hedgeMs while it stays stuck.
+						o.sched.hedge(every);
+						since = now;
+					}
+				},
+				Math.max(50, Math.floor(every / 4)),
+			);
+		}
 	}
 
 	get laneCount(): number {
@@ -128,6 +150,7 @@ export class BatchSender {
 	stop(): void {
 		if (this.stopped) return;
 		this.stopped = true;
+		if (this.hedgeTimer) clearInterval(this.hedgeTimer);
 		for (const l of this.lanes.values()) l.abort.abort();
 		this.lanes.clear();
 	}

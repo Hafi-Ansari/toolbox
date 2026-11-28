@@ -231,6 +231,35 @@ describe("TransferEngine", () => {
 		});
 	}
 
+	it("ordered: hedges the head range when its lane stalls, so the others don't wait for it", async () => {
+		// Lane 1 takes 4 s each way (an SCTP association in retransmission back-off). Without hedging,
+		// every range it holds stops the zip stream for 4 s.
+		const t = { ...T, hedgeMs: 150 };
+		const ctx = setup(3, (i) => ({ delayMs: i === 1 ? 4000 : 0 }), t);
+		const files = makeFiles([2 * MiB + 5, 700 * KiB, 0, 1]);
+		const t0 = performance.now();
+		const { sink, received } = await transfer(ctx, files, { ordered: true });
+		const ms = performance.now() - t0;
+		expect(received.phase).toBe("done");
+		await expectReceived(sink, files);
+		expect(ms).toBeLessThan(3500);
+	});
+
+	it("keeps frames within the session's SCTP max message size (§7.3)", async () => {
+		const ctx = setup(2);
+		ctx.pair.a.maxMessageSize = 8 * KiB; // below tuning.chunk (16 KiB here)
+		let biggest = 0;
+		for (const [, [ach]] of ctx.pair.channels)
+			ach.onSend = (d) => {
+				if (typeof d !== "string") biggest = Math.max(biggest, d.byteLength);
+			};
+		const files = makeFiles([300 * KiB, 1]);
+		const { sink, received } = await transfer(ctx, files);
+		expect(received.phase).toBe("done");
+		await expectReceived(sink, files);
+		expect(biggest).toBe(8 * KiB);
+	});
+
 	it("uses a lane that opens mid-transfer", async () => {
 		const ctx = setup(1, () => ({ bytesPerTick: 128 * KiB }));
 		const files = makeFiles([4 * MiB, 3 * MiB]);
