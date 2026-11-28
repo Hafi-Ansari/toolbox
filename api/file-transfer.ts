@@ -558,7 +558,7 @@ function isClaim(v: unknown): v is StoredClaim {
 /* ---------- The service */
 
 export interface FileTransferOptions {
-	/** HMAC key for IP hashes (`SEND_IP_SALT`). */
+	/** HMAC key for IP hashes (`FILE_TRANSFER_IP_SALT`). */
 	salt: string;
 	now?: () => number;
 }
@@ -893,7 +893,7 @@ const g = globalThis as { __toolboxFt?: FileTransfer; __toolboxFtSalt?: string }
 
 /**
  * Upstash in production; an in-memory store in local dev and tests (one per process). The IP salt
- * comes from `SEND_IP_SALT`; without it, dev uses a random per-process salt and production refuses.
+ * comes from `FILE_TRANSFER_IP_SALT`; without it, dev uses a random per-process salt and production refuses.
  */
 export function fileTransfer(): FileTransfer | "no-store" | "no-salt" {
 	if (g.__toolboxFt) return g.__toolboxFt;
@@ -902,7 +902,7 @@ export function fileTransfer(): FileTransfer | "no-store" | "no-salt" {
 	const deployed = !!process.env.VERCEL;
 	const kv = url && token ? redisKv(url, token) : deployed ? null : memoryKv();
 	if (!kv) return "no-store";
-	let salt = process.env.SEND_IP_SALT;
+	let salt = process.env.FILE_TRANSFER_IP_SALT;
 	if (!salt) {
 		if (deployed) return "no-salt";
 		g.__toolboxFtSalt ??= randomHex(16);

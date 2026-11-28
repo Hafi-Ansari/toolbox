@@ -195,7 +195,7 @@ export type ApiErrorCode =
 	| "full" // 100 peer fields
 	| "too-many-here" // 6 peers for this IP hash
 	| "disabled" // FILE_TRANSFER_DISABLED=1
-	| "no-salt" // production without SEND_IP_SALT
+	| "no-salt" // production without FILE_TRANSFER_IP_SALT
 	| "no-store" // deployed without a Redis store
 	| "server"; // anything unexpected
 
@@ -636,6 +636,12 @@ export interface PeerSession {
 	readonly dir: Dir;
 	/** The other side's hello. */
 	readonly remote: CtrlOf<"hello">;
+	/**
+	 * Largest message this side may send on a data channel: lane 0's `RTCSctpTransport.maxMessageSize`
+	 * (already the minimum of both ends). Undefined or 0 when unknown; the engine then assumes Chrome's
+	 * 256 KiB (`chunkSize()`, §7.3). Added in WP6.
+	 */
+	readonly maxMessageSize?: number;
 	/** Lanes open now, lane 0 first. */
 	lanes(): readonly Lane[];
 	/** Send a transfer ctrl message on lane 0. */

@@ -188,6 +188,12 @@ class Session implements PeerSession {
 			.map((c) => c.lane);
 	}
 
+	/** Lane 0's SCTP max message size (both ends agreed); undefined before lane 0 connects or when unknown. */
+	get maxMessageSize(): number | undefined {
+		const size = this.conns.get(0)?.pc.sctp?.maxMessageSize;
+		return typeof size === "number" && size > 0 && Number.isFinite(size) ? size : undefined;
+	}
+
 	sendCtrl(msg: TransferCtrl): void {
 		this.sendRaw(msg);
 	}

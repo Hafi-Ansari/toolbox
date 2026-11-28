@@ -553,10 +553,10 @@ describe("file transfer server: deployment switches", () => {
 		expect((globalThis as { __toolboxFt?: unknown }).__toolboxFt).toBeUndefined();
 	});
 
-	it("refuses to run in production without SEND_IP_SALT, or without a store", async () => {
+	it("refuses to run in production without FILE_TRANSFER_IP_SALT, or without a store", async () => {
 		vi.stubEnv("FILE_TRANSFER_DISABLED", "");
 		vi.stubEnv("VERCEL", "1");
-		vi.stubEnv("SEND_IP_SALT", "");
+		vi.stubEnv("FILE_TRANSFER_IP_SALT", "");
 		for (const n of ["ROOM_KV_REST_API_URL", "KV_REST_API_URL", "UPSTASH_REDIS_REST_URL"]) vi.stubEnv(n, "");
 		for (const n of ["ROOM_KV_REST_API_TOKEN", "KV_REST_API_TOKEN", "UPSTASH_REDIS_REST_TOKEN"]) vi.stubEnv(n, "");
 		expect(await (await serve(req())).json()).toEqual({ error: "no-store" });
@@ -570,7 +570,7 @@ describe("file transfer server: deployment switches", () => {
 	it("runs on a per-process salt and the memory store in dev", async () => {
 		vi.stubEnv("FILE_TRANSFER_DISABLED", "");
 		vi.stubEnv("VERCEL", "");
-		vi.stubEnv("SEND_IP_SALT", "");
+		vi.stubEnv("FILE_TRANSFER_IP_SALT", "");
 		for (const n of ["ROOM_KV_REST_API_URL", "KV_REST_API_URL", "UPSTASH_REDIS_REST_URL"]) vi.stubEnv(n, "");
 		const res = await serve(req());
 		expect(res.status).toBe(200);

@@ -154,6 +154,8 @@ export class FakeSession implements PeerSession {
 	readonly offerer: boolean;
 	readonly dir: Dir;
 	readonly remote: CtrlOf<"hello">;
+	/** Lane 0's SCTP max message size, as `PeerSession.maxMessageSize` (tests set it). */
+	maxMessageSize?: number;
 	peer!: FakeSession;
 	closed = false;
 	/** Every ctrl message this side sent, in order. */
