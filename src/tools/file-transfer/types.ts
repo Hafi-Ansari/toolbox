@@ -256,7 +256,8 @@ export type TransferErrorCode =
 	| "flow-control" // sender ignored flow control (§7.3); sent as cancel reason "protocol"
 	| "zip-unsupported" // zip stream never started after data was written (§8.2)
 	| "too-big" // over memoryMax in the memory fallback (§8.4)
-	| "sink-error"; // disk full, permission revoked… (cancel reason "error")
+	| "sink-error" // disk full, permission revoked… (cancel reason "error")
+	| "read-error"; // WP2: the sender couldn't read a file (moved, deleted or changed while sending); cancel reason "error" by the sender
 
 export type FtErrorCode = ConnectErrorCode | TransferErrorCode | ApiErrorCode;
 
