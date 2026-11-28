@@ -37,7 +37,8 @@ export const tools: ToolMeta[] = [
 		id: "pdf-txt",
 		path: "/pdf-txt",
 		title: "PDF → TXT",
-		blurb: "Turn a book of poems or prose into clean plain text, checked against the printed page.",
+		blurb:
+			"Turn a book of poems or prose into clean plain text, checked against the printed page. Scanned pages too, with OCR.",
 		icon: "text",
 		tags: ["PDF", "TXT", "Poetry"],
 		load: () => import("./pdf-txt/index.tsx"),
@@ -46,7 +47,8 @@ export const tools: ToolMeta[] = [
 		id: "unzip",
 		path: "/unzip",
 		title: "Zip / Unzip",
-		blurb: "Open ZIP, 7z, RAR and other archives, or pack files and folders into a new ZIP or 7z.",
+		blurb:
+			"Open ZIP, 7z, RAR and other archives, or pack files and folders into a ZIP, 7z or TAR.GZ, with an optional password.",
 		icon: "archive",
 		tags: ["ZIP", "7z", "RAR"],
 		load: () => import("./unzip/index.tsx"),
@@ -55,25 +57,28 @@ export const tools: ToolMeta[] = [
 		id: "pdf-edit",
 		path: "/pdf-edit",
 		title: "PDF Editor",
-		blurb: "Add text, ink, marks, signatures and images to any page. Save an edited copy on your device.",
+		blurb:
+			"Sign, fill in forms, and add text, drawings and images. Merge, split, reorder, rotate or delete pages. Never uploaded.",
 		icon: "pen",
-		tags: ["PDF", "Sign", "Annotate"],
+		tags: ["PDF", "Sign", "Merge", "Split"],
 		load: () => import("./pdf-edit/index.tsx"),
 	},
 	{
 		id: "room",
 		path: "/room",
 		title: "Shared room",
-		blurb: "A text box all your devices share. Paste a link here, tap it on your phone.",
+		blurb:
+			"A text box and files every device can see. Make a room, open this page on your other device, tap the room, and paste or add files.",
 		icon: "chat",
-		tags: ["Text", "Sync"],
+		tags: ["Text", "Files", "Sync"],
 		load: () => import("./room/index.tsx"),
 	},
 	{
 		id: "file-transfer",
 		path: "/file-transfer",
 		title: "Blazing Fast File Transfer",
-		blurb: "Send photos and videos straight to another device, as fast as your networks allow. Nothing is uploaded.",
+		blurb:
+			"Send photos, videos or whole folders straight to another device, as fast as your networks allow. Nothing is uploaded.",
 		icon: "arrow",
 		tags: ["Files", "P2P"],
 		load: () => import("./file-transfer/index.tsx"),
