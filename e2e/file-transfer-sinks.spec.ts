@@ -106,8 +106,9 @@ for (const kind of ["zip", "memory"] as const) {
 		const downloads: string[] = [];
 		page.on("download", (d) => downloads.push(d.suggestedFilename()));
 		const [download, result] = await Promise.all([page.waitForEvent("download"), receive(page, kind)]);
-		expect(result).toEqual({ mode: kind, location: "Photos from Calm Otter.zip" });
-		expect(download.suggestedFilename()).toBe("Photos from Calm Otter.zip");
+		expect(result.mode).toBe(kind);
+		expect(result.location).toMatch(/^Transfer from Calm Otter \d{4}-\d\d-\d\d \d\d\.\d\d\.zip$/);
+		expect(download.suggestedFilename()).toBe(result.location);
 		const file = await download.path();
 		expect(await download.failure()).toBeNull();
 		const bytes = await fs.readFile(file);

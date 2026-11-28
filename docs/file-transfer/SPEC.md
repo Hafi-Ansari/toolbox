@@ -138,13 +138,13 @@ Other findings:
 ### 4.4 Receiving
 
 1. In-page offer card: **"Calm Otter is sending 214 files (38.4 GB)"**, expandable file list, and:
-   - **Accept** (primary): saves everything as one download, `Photos from Calm Otter.zip`, which keeps folders and
+   - **Accept** (primary): saves everything as one download, `Transfer from Calm Otter 2026-11-28 10.11.zip`, which keeps folders and
      dates. No browser prompt.
    - **Save into a folder…** (secondary, Chromium desktop only, §8.3): an in-page explainer first, then the
      browser's folder picker and its "allow editing" prompt.
    - *Decline*.
 2. Progress as for sending.
-3. Done (zip): "Saved 214 files to your downloads as Photos from Calm Otter.zip". Done (folder): "Saved 214 files
+3. Done (zip): "Saved 214 files to your downloads as Transfer from Calm Otter 2026-11-28 10.11.zip" (memory fallback: "Received 214 files as …. To keep it, choose Save or Download when your browser asks."). Done (folder): "Saved 214 files
    to *Pictures/Trip* · 3 already there were skipped".
 
 ### 4.5 Leaving
@@ -504,7 +504,7 @@ interface ReceiveSink {
 
 ### 8.2 Zip stream, the default and prompt-free (`sinks/zipStream.ts` + `public/ft-sw.js`)
 
-One download, `Photos from <peer name>.zip`, stored (method 0, no compression) and ZIP64. It is written through
+One download, `Transfer from <peer name> <YYYY-MM-DD HH.MM>.zip` (local time of Accept), stored (method 0, no compression) and ZIP64. It is written through
 `ZipWriter.addStream(path, size)` from `src/lib/zipWriter.ts`, which already computes CRC32 as data arrives and
 writes data descriptors and ZIP64 records.
 

@@ -31,6 +31,9 @@ self.addEventListener("message", (event) => {
 		port.close();
 	}, OPEN_TTL_MS);
 	pending.set(msg.id, { name: String(msg.name || "download.zip"), length, port, timer });
+	// The page waits for this before it fetches: a message and a fetch reach this worker by different
+	// routes, so without it the fetch can arrive first and find nothing pending.
+	port.postMessage({ type: "opened", id: msg.id });
 });
 
 /** Content-Disposition with an ASCII fallback and the UTF-8 name (RFC 6266 / 5987), as api/rooms.ts. */

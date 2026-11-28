@@ -229,8 +229,15 @@ export const ZIP_STREAM = {
 	pingMs: 10_000,
 } as const;
 
-/** `Photos from Calm Otter.zip` (§4.4, §8.2). The name is still sanitized like any path segment. */
-export const zipName = (peerName: string) => `Photos from ${peerName}.zip`;
+/**
+ * `Transfer from Calm Otter 2026-11-28 10.11.zip` (§4.4, §8.2): the sender and the local date and time
+ * the batch was accepted, so batches sort by time and don't collide. Still sanitized like any path segment.
+ */
+export function zipName(peerName: string, at: Date = new Date()): string {
+	const two = (n: number) => String(n).padStart(2, "0");
+	const date = `${at.getFullYear()}-${two(at.getMonth() + 1)}-${two(at.getDate())}`;
+	return `Transfer from ${peerName} ${date} ${two(at.getHours())}.${two(at.getMinutes())}.zip`;
+}
 
 /** §8.1 path limits, applied on the receiver. */
 export const PATH_SEGMENT_MAX = 120;

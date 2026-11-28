@@ -131,7 +131,12 @@ export function doneText(p: BatchProgress, who: string): string {
 	const saved = filesText(p.files - p.skipped);
 	const skipped = p.skipped > 0 ? ` · ${p.skipped.toLocaleString("en-US")} already there were skipped` : "";
 	if (p.mode === "folder") return `Saved ${saved} to ${p.location ?? "the folder"}${skipped}`;
-	return `Saved ${saved} to your downloads as ${p.location ?? `Photos from ${who}.zip`}`;
+	const zip = p.location ?? `a .zip from ${who}`;
+	// The memory fallback (iPhone, Safari) hands the zip to the browser, which then asks where to keep
+	// it: nothing is saved until the person answers, so don't say "Saved".
+	if (p.mode === "memory")
+		return `Received ${saved} as ${zip}. To keep it, choose Save or Download when your browser asks.`;
+	return `Saved ${saved} to your downloads as ${zip}`;
 }
 
 /** How a batch that didn't finish ended, for each side. */

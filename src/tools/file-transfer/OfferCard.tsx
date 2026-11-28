@@ -110,7 +110,11 @@ export function OfferCard({
 					<Button data-accept="" icon="download" onClick={acceptZip} disabled={busy}>
 						Accept
 					</Button>
-					<span className={s.muted}>Saves as one .zip in your downloads: {zipName(remote.name)}</span>
+					<span className={s.muted}>
+						{zip
+							? `Saves as one .zip in your downloads: ${zipName(remote.name)}`
+							: `Arrives as one .zip, ${zipName(remote.name)}. Your browser asks you to save it at the end.`}
+					</span>
 				</div>
 				{canFolder && (
 					<Button variant="ghost" icon="folder" onClick={acceptFolder} disabled={busy}>
