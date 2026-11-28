@@ -2,11 +2,7 @@
 // no empty, "." or ".." segments, and distinct (a repeated name gets " (2)").
 import { uniqueName } from "../names.ts";
 
-export interface Picked {
-	/** Path relative to the drop or pick, e.g. "Photos/2024/a.jpg" or just "a.jpg". */
-	path: string;
-	file: File;
-}
+export type { Picked } from "../../../lib/collect.ts";
 
 export interface Item {
 	id: number;

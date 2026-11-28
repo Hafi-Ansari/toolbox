@@ -11,6 +11,7 @@ Small, fast tools that run entirely in the browser. No uploads, no accounts, no 
 | **PDF Editor** | `/pdf-edit` | Signs, fills in forms, and adds text, drawings, marks and images to PDF pages. Rearranges, rotates, duplicates and deletes pages, merges several PDFs, and splits or extracts pages (into one .zip or separate PDFs). Opens password-protected PDFs, and downloads a new copy. |
 | **Shared room** | `/room` | A text box and files every device can see: make a room, open the page on another device, tap the room, and paste or add files. Rooms are public and end when their creator leaves, or after 2 hours. |
 | **Blazing Fast File Transfer** | `/file-transfer` | Sends photos, videos and whole folders straight to another device over WebRTC, striped across several connections. The other person accepts and gets one .zip download (or, opt-in, the files in a folder). Nothing is uploaded. Fastest on Wi-Fi or wired; mobile data limits the speed. |
+| **Photo Converter** | `/photo` | Converts iPhone HEIC photos to JPEG or PNG, and JPEG ⇄ PNG, one photo or a whole folder (one .zip). Keeps the pixel size, orientation, Display P3 colors and EXIF (date, camera, location, with a switch to remove the location). |
 
 ## Stack
 
@@ -117,6 +118,18 @@ Design and decisions: [docs/file-transfer/SPEC.md](docs/file-transfer/SPEC.md). 
   - `FILE_TRANSFER_DISABLED=1`: kill switch. Every call answers 503 `disabled` without touching Redis; the page says "File Transfer is paused right now."
   - `ROOM_KV_REST_API_URL` / `ROOM_KV_REST_API_TOKEN`: the same Upstash database as the room. Local dev and the e2e tests use the in-memory store in `scripts/api-dev.ts`.
 - **Privacy.** Connecting shows each side's IP addresses to the other (inherent to WebRTC; the page says so). WebRTC encrypts every connection (DTLS); there is no extra app-level encryption or verification code, so the signaling server could in principle sit in the middle.
+
+## How the photo converter works
+
+- **One photo at a time, in a worker.** `src/tools/photo/photo.worker.ts` decodes and encodes each photo off the main thread, then hands the bytes back (transferred, not copied). A 48 MP photo is about 195 MB of pixels, so photos are never processed side by side. One photo downloads as itself; several stream into one store-only zip (`src/lib/zipWriter.ts`), each entry dated with the photo's date taken. Cancel stops the worker.
+- **Codecs load per format.** Each WebAssembly codec is fetched the first time a photo needs it: libheif (`libheif-js`, HEVC decoding via libde265, 1.46 MB, about 490 KB gzipped) for HEIC, MozJPEG (`@jsquash/jpeg`) and the PNG codec (`@jsquash/png`). A JPEG → PNG batch never downloads libheif. The canvas is never used: it would drop the color profile and EXIF, flatten everything to 8-bit sRGB, and iPhone Safari caps it near 16.7 MP.
+- **Decoding.** HEIC: the primary image through libheif's C API (`heif.ts`), with its rotation and mirroring applied, at 8 bits or, for 10/12-bit files, as 16-bit values; plus its ICC profile or nclx color description, its EXIF block, and whether it carries an HDR gain map. JPEG and PNG: raw pixels, then the EXIF orientation is applied by `rotate.ts`. The ICC profile and EXIF are read from the file's own segments (`containers.ts`).
+- **Color.** The source color space is kept and its profile embedded: iPhone photos stay Display P3, which every current phone, Mac, Windows photo viewer and browser shows correctly. *sRGB for maximum compatibility* (off by default) converts Display P3 exactly (sRGB curve, one 3×3 matrix, clamp) for sites that strip profiles. Profiles are recognized by their colorants and curves (`color.ts`); when a HEIC names its space only through nclx, a compact ICC profile written by `iccProfile()` is embedded instead.
+- **Metadata.** EXIF is copied with three edits made in place (`exif.ts`): Orientation becomes 1, the embedded thumbnail is removed, and with *Remove location* the GPS directory is unlinked and every byte of it zeroed, so no coordinates remain. XMP isn't copied.
+- **Output.** JPEG: MozJPEG, quality 92 by default, baseline, 4:4:4 (no chroma subsampling, so colored edges stay sharp); transparency is filled with white, with a note. PNG: 8-bit, or 16-bit when the source has more than 8 bits. A file already in the chosen format is handed back untouched unless a switch requires a change.
+- **HDR.** iPhone HEIC photos are a standard image plus an HDR gain map. The standard image is saved and the list says HDR brightness isn't kept; gain-map output is future work.
+- **Tests** use synthetic fixtures only (`e2e/fixtures/photo`, made once by `scripts/photo-fixtures.py` with Pillow and pillow-heif, since the bundled libheif can't encode). `src/tools/photo/nodeCodecs.ts` loads the same codecs in Node for the unit and e2e checks.
+- **Licenses.** libheif and libde265 are LGPL-3.0 (via `libheif-js`); the jSquash codecs (MozJPEG, the Rust `png` crate) are Apache-2.0 / BSD-style. HEVC is patent-encumbered; decoding it with libde265 is what nearly every web HEIC converter ships, and nothing is encoded to HEVC here.
 
 ## Adding a tool
 

@@ -19,6 +19,7 @@ const PATHS = {
 	pen: "m14 6 4 4M4 20l4.5-1 11-11a2.8 2.8 0 0 0-4-4l-11 11L4 20Z",
 	chat: "M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z",
 	copy: "M9 9h11v11H9zM5 15H4V4h11v1",
+	image: "M4 5h16v14H4zM4 16l5-5 4 4 2-2 5 5M15 9.5h.01",
 } as const;
 
 export type IconName = keyof typeof PATHS;

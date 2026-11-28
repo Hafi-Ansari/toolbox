@@ -1,11 +1,5 @@
 import * as Comlink from "comlink";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
-import { explainOnce } from "../../lib/confirm.tsx";
-import { formatBytes, formatDuration } from "../../lib/format.ts";
-import { Icon } from "../../lib/Icon.tsx";
-import { willAskWhereToSave } from "../../lib/saveFile.ts";
-import { Button, Card, Note, Pills, Progress } from "../../lib/ui.tsx";
-import { startWorker, type WorkerHandle } from "../../lib/worker.ts";
 import {
 	type Collected,
 	canPickDirectory,
@@ -13,7 +7,13 @@ import {
 	fromDrop,
 	fromInput,
 	pickDirectory,
-} from "./create/collect.ts";
+} from "../../lib/collect.ts";
+import { explainOnce } from "../../lib/confirm.tsx";
+import { formatBytes, formatDuration } from "../../lib/format.ts";
+import { Icon } from "../../lib/Icon.tsx";
+import { willAskWhereToSave } from "../../lib/saveFile.ts";
+import { Button, Card, Note, Pills, Progress } from "../../lib/ui.tsx";
+import { startWorker, type WorkerHandle } from "../../lib/worker.ts";
 import {
 	type CreateOptions,
 	extension,

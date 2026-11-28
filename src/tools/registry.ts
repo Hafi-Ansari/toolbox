@@ -83,4 +83,14 @@ export const tools: ToolMeta[] = [
 		tags: ["Files", "P2P"],
 		load: () => import("./file-transfer/index.tsx"),
 	},
+	{
+		id: "photo",
+		path: "/photo",
+		title: "Photo Converter",
+		blurb:
+			"Convert iPhone HEIC photos to JPEG or PNG, and JPEG ⇄ PNG. Colors, orientation and details kept. Never uploaded.",
+		icon: "image",
+		tags: ["HEIC", "JPEG", "PNG"],
+		load: () => import("./photo/index.tsx"),
+	},
 ];

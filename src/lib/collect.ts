@@ -1,6 +1,11 @@
 // Gathers files (with their relative paths) from the file picker, the folder
-// picker, or a drop of files and folders.
-import type { Picked } from "./paths.ts";
+// picker, or a drop of files and folders. Shared by Zip / Unzip (Create) and the photo converter.
+
+export interface Picked {
+	/** Path relative to the drop or pick, e.g. "Photos/2024/a.jpg" or just "a.jpg". */
+	path: string;
+	file: File;
+}
 
 export interface Collected {
 	files: Picked[];

@@ -11,6 +11,10 @@ export type DetectedFormat =
 	| "zstd"
 	| "cab"
 	| "tar"
+	| "heic"
+	| "avif"
+	| "jpeg"
+	| "png"
 	| "unknown";
 
 const ascii = (bytes: Uint8Array, start: number, end: number) => String.fromCharCode(...bytes.subarray(start, end));
@@ -40,6 +44,25 @@ export function detectBytes(head: Uint8Array): DetectedFormat {
 	if (starts(0x28, 0xb5, 0x2f, 0xfd)) return "zstd";
 	if (text.startsWith("MSCF")) return "cab";
 	if (text.slice(257, 262) === "ustar") return "tar";
+	if (starts(0xff, 0xd8, 0xff)) return "jpeg";
+	if (starts(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) return "png";
+	if (text.slice(4, 8) === "ftyp") return heifBrand(head);
+	return "unknown";
+}
+
+/** ISO-BMFF `ftyp`: the major brand, then the compatible brands, decide HEIC (HEVC) or AVIF. */
+function heifBrand(head: Uint8Array): DetectedFormat {
+	const size = new DataView(head.buffer, head.byteOffset, head.byteLength).getUint32(0);
+	const end = Math.min(head.length, size);
+	const brands = [ascii(head, 8, 12)];
+	for (let at = 16; at + 4 <= end; at += 4) brands.push(ascii(head, at, at + 4));
+	const hevc = ["heic", "heix", "hevc", "hevx", "heim", "heis", "hevm", "hevs"];
+	if (hevc.includes(brands[0])) return "heic";
+	if (brands[0] === "avif" || brands[0] === "avis") return "avif";
+	if (brands.some((b) => hevc.includes(b))) return "heic";
+	if (brands.includes("avif") || brands.includes("avis")) return "avif";
+	// A bare "mif1"/"msf1" HEIF: try it as HEIC; libheif reports what it can't decode.
+	if (brands.includes("mif1") || brands.includes("msf1")) return "heic";
 	return "unknown";
 }
 
