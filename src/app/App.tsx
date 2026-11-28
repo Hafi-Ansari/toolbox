@@ -1,4 +1,4 @@
-import { type ComponentType, lazy, type MouseEvent, Suspense, useEffect, useState } from "react";
+import { type ComponentType, lazy, type MouseEvent, type ReactNode, Suspense, useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Icon } from "../lib/Icon.tsx";
 import { type ToolMeta, tools } from "../tools/registry.ts";
@@ -112,6 +112,22 @@ function Home() {
 /** How long a click waits on the home page for a tool's code before showing the loading placeholder. */
 const HOLD_MS = 1500;
 
+/**
+ * A link home. From a cross-origin-isolated tool it must be a full page load: isolation belongs to
+ * the document, and other tools (the reader's frames, File Transfer's service worker) expect none.
+ */
+function HomeLink({ isolated, className, children }: { isolated: boolean; className: string; children: ReactNode }) {
+	return isolated ? (
+		<a href="/" className={className}>
+			{children}
+		</a>
+	) : (
+		<Link href="/" className={className}>
+			{children}
+		</Link>
+	);
+}
+
 function ToolCard({ tool }: { tool: ToolMeta }) {
 	const [, navigate] = useLocation();
 	const [opening, setOpening] = useState(false);
@@ -120,7 +136,9 @@ function ToolCard({ tool }: { tool: ToolMeta }) {
 	// If the code isn't here yet, stay on the home page until it is (briefly), then switch pages
 	// in one step: no blank placeholder in between. Modified clicks (new tab etc.) are left alone.
 	const open = (e: MouseEvent<HTMLAnchorElement>) => {
-		if (loaded.has(tool.id) || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+		// An isolated tool needs its own document (its headers), so the browser loads it normally.
+		if (tool.isolated || loaded.has(tool.id) || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
+			return;
 		e.preventDefault();
 		if (opening) return;
 		setOpening(true);
@@ -136,8 +154,9 @@ function ToolCard({ tool }: { tool: ToolMeta }) {
 		// On failure the page shows the fallback, and the lazy import tries again.
 		loadTool(tool).then(go, go);
 	};
+	const Anchor = tool.isolated ? "a" : Link;
 	return (
-		<Link
+		<Anchor
 			href={tool.path}
 			className={s.card}
 			onMouseEnter={preload}
@@ -158,7 +177,7 @@ function ToolCard({ tool }: { tool: ToolMeta }) {
 				))}
 			</span>
 			<Icon name="arrow" size={18} className={s.cardArrow} />
-		</Link>
+		</Anchor>
 	);
 }
 
@@ -172,9 +191,9 @@ function ToolPage({ tool }: { tool: ToolMeta }) {
 	if (!Ready && !Lazy) return null;
 	return (
 		<div className={s.toolPage}>
-			<Link href="/" className={s.back}>
+			<HomeLink isolated={!!tool.isolated} className={s.back}>
 				<Icon name="back" size={16} /> All tools
-			</Link>
+			</HomeLink>
 			{Ready ? (
 				<Ready />
 			) : (
@@ -212,10 +231,10 @@ export function App() {
 	return (
 		<div className={s.shell}>
 			<header className={s.header}>
-				<Link href="/" className={s.brand}>
+				<HomeLink isolated={!!tool?.isolated} className={s.brand}>
 					<Logo />
 					<span>toolbox</span>
-				</Link>
+				</HomeLink>
 				<span className={s.status}>
 					<span className={s.dot} aria-hidden="true" />
 					Runs locally

@@ -20,6 +20,7 @@
     "@expo-google-fonts/noto-sans": "^0.4.2",
     "@fontsource-variable/geist": "^5.3.0",
     "@fontsource-variable/geist-mono": "^5.3.0",
+    "@huggingface/transformers": "4.3.2",
     "@jsquash/jpeg": "1.6.0",
     "@jsquash/png": "3.1.1",
     "@tesseract.js-data/eng": "^1.0.0",
@@ -28,6 +29,7 @@
     "comlink": "^4.4.2",
     "fflate": "^0.8.3",
     "libheif-js": "1.23.5",
+    "mediabunny": "1.65.2",
     "mupdf": "^1.28.6",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
@@ -48,6 +50,8 @@
   },
   "private": true,
   "allowScripts": {
+    "onnxruntime-node": false,
+    "protobufjs": false,
     "tesseract.js": false
   }
 }
