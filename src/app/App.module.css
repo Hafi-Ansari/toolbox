@@ -141,6 +141,25 @@
 	box-shadow: 0 8px 32px -12px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
+/* Clicked, and the tool's code is still arriving (slow connection): the card waits, gently. */
+.card[aria-busy="true"] {
+	cursor: progress;
+	border-color: var(--accent);
+	animation: opening 900ms var(--ease) infinite alternate;
+}
+
+@keyframes opening {
+	to {
+		box-shadow: 0 8px 32px -10px color-mix(in srgb, var(--accent) 55%, transparent);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.card[aria-busy="true"] {
+		animation: none;
+	}
+}
+
 .cardIcon {
 	display: grid;
 	place-items: center;
