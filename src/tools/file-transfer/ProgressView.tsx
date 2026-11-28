@@ -6,8 +6,31 @@ import { Button, Note, Progress } from "../../lib/ui.tsx";
 import { bytes, doneText, endedText, eta, filesText, pathText, percent, rate } from "./copy.ts";
 import { useThrottled } from "./hooks.ts";
 import s from "./Send.module.css";
+import { canShareZip, heldZip, saveBlob, shareZip } from "./sinks/lastZip.ts";
 import { ARIA_LIVE_MIN_MS, CURRENT_FILES_SHOWN, PROGRESS_MIN_MS } from "./tuning.ts";
 import type { BatchProgress, PathType, PeerRef } from "./types.ts";
+
+/**
+ * The memory fallback's zip, still on the page (iPhone, Safari): save it again with a tap, or hand it
+ * to the share sheet ("Save to Files"), for when the automatic save prompt didn't come or didn't finish.
+ */
+function SaveHeldZip({ name }: { name: string | null }) {
+	const blob = heldZip(name);
+	if (!blob || !name) return null;
+	return (
+		<div className={s.savedActions}>
+			<Button icon="download" onClick={() => saveBlob(blob, name)}>
+				Save .zip
+			</Button>
+			{canShareZip(blob, name) && (
+				<Button variant="ghost" icon="upload" onClick={() => shareZip(blob, name)}>
+					Share…
+				</Button>
+			)}
+			<span className={s.muted}>If the download didn't appear or didn't finish, save it from here.</span>
+		</div>
+	);
+}
 
 export function ProgressView({
 	progress,
@@ -67,6 +90,7 @@ export function ProgressView({
 		return (
 			<div className={s.batch}>
 				<Note tone="success">{doneText(p, remote.name)}</Note>
+				{!sending && p.mode === "memory" && <SaveHeldZip name={p.location} />}
 			</div>
 		);
 

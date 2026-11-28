@@ -4,25 +4,12 @@
 import { batchingSink } from "../../../lib/zipWriter.ts";
 import { tuning } from "../tuning.ts";
 import { FtError, type ManifestFile, type ReceiveSink, type SinkContext } from "../types.ts";
+import { keepZip, releaseZip, saveBlob } from "./lastZip.ts";
 import { downloadName, planZip, ZipFeed } from "./zipFeed.ts";
 
 /** True when a batch of these files fits the memory fallback (compare with `hello.caps.memoryMax`). */
 export const fitsInMemory = (files: readonly Pick<ManifestFile, "size">[], max = tuning.memoryMax) =>
 	files.reduce((n, f) => n + f.size, 0) <= max;
-
-/** Saves a Blob as one download, without a prompt. */
-export function saveBlob(blob: Blob, name: string): void {
-	const url = URL.createObjectURL(blob);
-	const a = document.createElement("a");
-	a.href = url;
-	a.download = name;
-	a.hidden = true;
-	document.body.append(a);
-	a.click();
-	a.remove();
-	// Revoking at once can cancel the download in some browsers.
-	setTimeout(() => URL.revokeObjectURL(url), 60_000);
-}
 
 export interface MemorySinkOptions {
 	/** Defaults to `tuning.memoryMax`. */
@@ -47,6 +34,8 @@ class MemorySink implements ReceiveSink {
 
 	async begin(files: ManifestFile[]): Promise<{ skip: number[] }> {
 		if (!fitsInMemory(files, this.options.max)) throw new FtError("too-big");
+		// The previous batch's zip, held for "Save .zip", would double the memory this one needs.
+		releaseZip();
 		const plan = planZip(files);
 		// Coalesce the many small pieces into ~4 MiB parts (batchingSink copies them).
 		const { sink, flush } = batchingSink((chunk) => this.parts.push(chunk as Uint8Array<ArrayBuffer>));
@@ -69,6 +58,7 @@ class MemorySink implements ReceiveSink {
 		const blob = new Blob(this.parts, { type: "application/zip" });
 		this.parts = [];
 		this.feed = null;
+		keepZip(blob, this.name);
 		(this.options.save ?? saveBlob)(blob, this.name);
 		return { location: this.name };
 	}
