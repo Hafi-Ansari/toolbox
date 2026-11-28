@@ -4,10 +4,12 @@
 //   out/stubborn.epub (publisher colors pinned with !important, as many web-downloaded books do)
 //   out/poems.pdf     (a made-up poetry book, for PDF → TXT)
 //   out/scan.pdf      (one of its pages as a scan without a text layer, for OCR)
+//   out/speech.wav    (synthetic speech with a long pause, for Video → Transcript; Windows only)
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import { EpubBuilder } from "../src/tools/epub-pdf/engine/epub.ts";
 import { poemsPdf, scanPdf } from "./poems.ts";
+import { speechWav } from "./speech.ts";
 
 function hostileEpub(file: string) {
 	const parts: Uint8Array[] = [];
@@ -58,5 +60,6 @@ export default function setup() {
 	execFileSync(process.execPath, ["e2e/edit-fixture.ts"]);
 	poemsPdf("out/poems.pdf");
 	scanPdf("out/scan.pdf");
+	speechWav();
 	return import("./archives.ts").then(({ archiveFixtures }) => archiveFixtures());
 }

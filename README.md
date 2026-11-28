@@ -11,6 +11,7 @@ Small, fast tools that run entirely in the browser. No uploads, no accounts, no 
 | **PDF Editor** | `/pdf-edit` | Signs, fills in forms, and adds text, drawings, marks and images to PDF pages. Rearranges, rotates, duplicates and deletes pages, merges several PDFs, and splits or extracts pages (into one .zip or separate PDFs). Opens password-protected PDFs, and downloads a new copy. |
 | **Shared room** | `/room` | A text box and files every device can see: make a room, open the page on another device, tap the room, and paste or add files. Rooms are public and end when their creator leaves, or after 2 hours. |
 | **Blazing Fast File Transfer** | `/file-transfer` | Sends photos, videos and whole folders straight to another device over WebRTC, striped across several connections. The other person accepts and gets one .zip download (or, opt-in, the files in a folder). Nothing is uploaded. Fastest on Wi-Fi or wired; mobile data limits the speed. |
+| **Video → Transcript** | `/transcribe` | Turns a video or audio file (MP4, MOV, MKV, WebM, MP3, M4A, WAV, FLAC…) into a timestamped transcript, one `[HH:MM:SS] text` line per sentence or phrase, beside a player of the same file: click a line to hear it, search the text, download TXT or SRT. Whisper runs on the graphics card (WebGPU) or the processor; the file is never uploaded. |
 | **Photo Converter** | `/photo` | Converts iPhone HEIC photos to JPEG or PNG, and JPEG ⇄ PNG, one photo or a whole folder (one .zip). Keeps the pixel size, orientation, Display P3 colors and EXIF (date, camera, location, with a switch to remove the location). |
 
 ## Stack
@@ -26,6 +27,7 @@ Small, fast tools that run entirely in the browser. No uploads, no accounts, no 
 | Styling | CSS Modules + `tokens.css` | Zero runtime |
 | Shared room | One Vercel Function (`api/rooms.ts`) + Upstash Redis, polled | Vercel Functions can't hold WebSockets open; a room is tiny state, so polling a key-value store is enough |
 | File Transfer | WebRTC data channels, several peer connections per pair; one Vercel Function (`api/file-transfer.ts`) + the same Redis for presence and the first handshake | No relay and no file bytes on a server; striping beats the per-connection limit on long links |
+| Transcription | `@huggingface/transformers` (Whisper on onnxruntime-web: WebGPU, or multithreaded WASM) + `mediabunny` (demuxing, WebCodecs decoding) in a Web Worker | Whisper large-v3-turbo runs on a mid-range GPU at ~11× real time; Mediabunny reads video in ranges, no ffmpeg.wasm |
 | Tests | Vitest (unit), Playwright (headless e2e) | |
 
 ## How "no size limit" works
@@ -131,10 +133,34 @@ Design and decisions: [docs/file-transfer/SPEC.md](docs/file-transfer/SPEC.md). 
 - **Tests** use synthetic fixtures only (`e2e/fixtures/photo`, made once by `scripts/photo-fixtures.py` with Pillow and pillow-heif, since the bundled libheif can't encode). `src/tools/photo/nodeCodecs.ts` loads the same codecs in Node for the unit and e2e checks.
 - **Licenses.** libheif and libde265 are LGPL-3.0 (via `libheif-js`); the jSquash codecs (MozJPEG, the Rust `png` crate) are Apache-2.0 / BSD-style. HEVC is patent-encumbered; decoding it with libde265 is what nearly every web HEIC converter ships, and nothing is encoded to HEVC here.
 
+## How Video → Transcript works
+
+Code: `src/tools/transcribe/`. It does in the browser what a desktop `ffmpeg` + `faster-whisper` script does, with the same output format.
+
+- **Audio out of any container.** Mediabunny opens the file (reading byte ranges, never the whole file), finds its audio track and decodes it through WebCodecs; `engine/resample.ts` turns it into 16 kHz mono (polyphase windowed sinc, streamed). MP4/MOV/M4A, MKV/WebM, MP3, WAV, Ogg and FLAC work wherever the browser decodes the codec (AAC, Opus, MP3, FLAC, PCM, Vorbis); others (AC-3 in most browsers, WMA, AVI) are reported as unsupported.
+- **Windows like faster-whisper's.** `engine/chunk.ts` works through the audio two minutes at a time (cut at a quiet moment, so memory stays small however long the file): silences of 2 s or more are removed (Whisper invents text over silence), and the rest is cut into windows of at most 30 s at the quietest moment, so no word is split. Each window maps its times back to the file's own clock, so lines line up with the player even after removed pauses.
+- **Whisper.** transformers.js runs the ONNX conversions from Hugging Face (`onnx-community/whisper-*`), greedy decoding with timestamps. **Auto** picks large-v3-turbo on WebGPU (fp16 encoder, 4-bit decoder: 1.6 GB, downloaded once, then kept in Cache Storage; "Remove them" under the tool frees it) and Small (8-bit, 250 MB) on the processor; Base and Tiny are offered too. transformers.js 4.3 skips the "first timestamp within 1 s" rule Whisper's config asks for, which let a window open at 20 s and drop everything before it; `FirstTimestampCap` in the worker applies it. The spoken language is chosen (English by default): transformers.js can't detect it.
+- **Clean-up** (`engine/clean.ts`): stock phrases Whisper produces on silence ("Thank you.", "Thanks for watching!") are dropped only where the audio under them is mostly quiet; runs of a word or phrase repeated four or more times collapse to one; a long sentence repeated straight after itself is dropped.
+- **Output** (`engine/format.ts`): TXT is one `[HH:MM:SS] text` line per segment, SRT has numbered cues with `HH:MM:SS,mmm`. Times are truncated, never rounded, the same arithmetic as the Python script it replaces (checked against it on 20,000 values).
+- **Threads need isolation.** Multithreaded WASM needs `SharedArrayBuffer`, which only a cross-origin-isolated page has. Only `/transcribe` is served with `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` (plus COEP on its worker scripts), in `vercel.json` and, for `npx vite` and `vite preview`, `scripts/isolation.ts`. Isolation belongs to a document, so tools marked `isolated` in the registry are entered and left with a full page load; every other page stays unisolated. Model downloads are CORS requests, which `require-corp` allows. Without isolation the tool still works, on one thread.
+- **Self-hosted runtime, remote weights.** transformers.js and the onnxruntime WASM (27 MB, 6.8 MB gzipped) are served from `/assets/` (`?url` imports; the library's default is jsDelivr). Only the model weights come from huggingface.co. The media file never leaves the device.
+- **Measured** (November 2026, RTX 4060 Ti, Ryzen 9 5900X, headless Edge; a 13 min 23 s LibriVox reading of *The Gift of the Magi*, word error rate against the published text):
+
+  | Engine | Time | Word errors |
+  |---|---:|---:|
+  | faster-whisper large-v3-turbo, CUDA, beam 5 (the desktop script) | 28 s | 3.06 % |
+  | large-v3-turbo, WebGPU | 62–70 s | 3.15 % |
+  | Small, processor (8 threads) | 2 min 53 s | 4.16 % |
+  | Base, processor (8 threads) | 1 min 19 s – 1 min 36 s | 6.84 % |
+
+  MP4, MOV and MKV gave identical transcripts; WebM (Opus) 3.44 %. A 2-hour file took 10 min 21 s on WebGPU, and the browser's memory stayed level throughout (about 6.6 GB across Edge's processes, most of it the model). Whisper sometimes ends a segment long after its words ("by O. Henry." stretched over 22 s, swallowing the next 50 words); the worker cuts such a segment to a plausible length and decodes the rest of the window again, as faster-whisper seeks past what it has written. That took Small from 6.26 % to 4.16 %.
+- **Browsers.** Chrome and Edge: everything, WebGPU on most computers. Firefox: not tested yet (it has WebCodecs audio, and WebGPU on Windows). Safari 26 and later decode the audio of video files through WebCodecs; older Safari can read only WAV and similar files. Without WebGPU the processor path runs Small at about 4–5× real time on a 12-core desktop, much slower on phones.
+- **Licenses.** transformers.js: Apache-2.0. onnxruntime-web: MIT. Mediabunny: MPL-2.0. Whisper weights: MIT.
+
 ## Adding a tool
 
 1. Create `src/tools/<id>/index.tsx` with a default-export component.
-2. Add one entry to `src/tools/registry.ts`.
+2. Add one entry to `src/tools/registry.ts`. A tool that needs `SharedArrayBuffer` sets `isolated: true` and adds its path to `vercel.json` and `scripts/isolation.ts` (see Video → Transcript).
 
 The tool becomes its own lazy chunk and shares the UI kit in `src/lib/ui.tsx`.
 

@@ -11,6 +11,12 @@ export interface ToolMeta {
 	blurb: string;
 	icon: IconName;
 	tags: string[];
+	/**
+	 * Served cross-origin isolated (COOP/COEP headers on its path, in vercel.json and vite.config.ts),
+	 * for multithreaded WASM. Isolation is set per document, so the app enters and leaves such a tool
+	 * with a full page load instead of client-side navigation.
+	 */
+	isolated?: boolean;
 	load: () => Promise<{ default: ComponentType }>;
 }
 
@@ -92,5 +98,16 @@ export const tools: ToolMeta[] = [
 		icon: "image",
 		tags: ["HEIC", "JPEG", "PNG"],
 		load: () => import("./photo/index.tsx"),
+	},
+	{
+		id: "transcribe",
+		path: "/transcribe",
+		title: "Video → Transcript",
+		blurb:
+			"Turn a video or audio file into a timestamped text transcript with Whisper, running on your own device. Never uploaded.",
+		icon: "mic",
+		tags: ["Video", "Audio", "TXT"],
+		isolated: true,
+		load: () => import("./transcribe/index.tsx"),
 	},
 ];
