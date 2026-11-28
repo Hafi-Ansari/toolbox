@@ -57,7 +57,14 @@ async function open(
 	const errors: string[] = [];
 	page.on("pageerror", (e) => errors.push(e.message));
 	page.on("console", (m) => m.type() === "error" && errors.push(`${m.text()} ${m.location().url}`.trim()));
-	page.on("response", (r) => r.status() >= 400 && console.log(`[${name}] ${r.status()} ${r.request().method()} ${r.url()} ${r.request().postData()?.slice(0, 120) ?? ""}`));
+	page.on(
+		"response",
+		(r) =>
+			r.status() >= 400 &&
+			console.log(
+				`[${name}] ${r.status()} ${r.request().method()} ${r.url()} ${r.request().postData()?.slice(0, 120) ?? ""}`,
+			),
+	);
 	const id = Array.from({ length: 16 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
 	const secret = Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
 	await page.addInitScript(
@@ -141,7 +148,9 @@ async function acceptZip(page: Page, from: string, count: number) {
 		page.waitForEvent("download", { timeout: 20_000 }),
 		page.getByRole("button", { name: "Accept" }).click(),
 	]);
-	expect(download.suggestedFilename()).toBe(`Photos from ${from}.zip`);
+	expect(download.suggestedFilename()).toMatch(
+		new RegExp(String.raw`^Transfer from ${from} \d{4}-\d\d-\d\d \d\d\.\d\d\.zip$`),
+	);
 	const file = await download.path();
 	expect(await download.failure()).toBeNull();
 	return file;
@@ -179,7 +188,7 @@ test("presence, request and accept, then a folder batch both ways as streamed zi
 	await a.page.locator("input[webkitdirectory]").setInputFiles(root);
 	await expect(a.page.getByText(/Waiting for Calm Otter to accept 7 files/)).toBeVisible();
 	const zip1 = await acceptZip(b.page, "Brisk Fox", 7);
-	await expect(b.page.getByText("Saved 7 files to your downloads as Photos from Brisk Fox.zip")).toBeVisible({
+	await expect(b.page.getByText(/^Saved 7 files to your downloads as Transfer from Brisk Fox .+\.zip$/)).toBeVisible({
 		timeout: 30_000,
 	});
 	await expect(a.page.getByText(/^Sent 7 files/)).toBeVisible();
@@ -193,7 +202,7 @@ test("presence, request and accept, then a folder batch both ways as streamed zi
 			Object.entries(back).map(([name, buffer]) => ({ name, mimeType: "application/octet-stream", buffer })),
 		);
 	const zip2 = await acceptZip(a.page, "Calm Otter", 2);
-	await expect(a.page.getByText("Saved 2 files to your downloads as Photos from Calm Otter.zip")).toBeVisible({
+	await expect(a.page.getByText(/^Saved 2 files to your downloads as Transfer from Calm Otter .+\.zip$/)).toBeVisible({
 		timeout: 30_000,
 	});
 	await expectZip(zip2, back);

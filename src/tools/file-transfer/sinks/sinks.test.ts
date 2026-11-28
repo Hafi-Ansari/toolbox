@@ -81,9 +81,10 @@ describe("memory sink", () => {
 		);
 		expect(sink.ordered).toBe(true);
 		expect(acceptMode(sink)).toBe("memory");
-		expect(await feedOrdered(sink)).toEqual({ location: "Photos from Calm Otter.zip" });
+		const { location } = await feedOrdered(sink);
+		expect(location).toMatch(/^Transfer from Calm Otter \d{4}-\d\d-\d\d \d\d\.\d\d\.zip$/);
 		expect(saved).toHaveLength(1);
-		expect(saved[0].name).toBe("Photos from Calm Otter.zip");
+		expect(saved[0].name).toBe(location);
 		expect(saved[0].blob.size).toBe(planZip(manifest).length);
 		const reader = await ZipReader.open(saved[0].blob);
 		expect([...reader.entries.keys()]).toEqual(names);
@@ -103,7 +104,7 @@ describe("zip stream sink", () => {
 		const saved: Blob[] = [];
 		const sink = createZipStreamSink({ peerName: "Calm/Otter", batch: 2 }, { memory: { save: (b) => saved.push(b) } });
 		expect(sink.mode).toBe("zip");
-		expect(await feedOrdered(sink)).toEqual({ location: "Photos from Calm_Otter.zip" });
+		expect((await feedOrdered(sink)).location).toMatch(/^Transfer from Calm_Otter \d{4}-\d\d-\d\d \d\d\.\d\d\.zip$/);
 		expect(sink.mode).toBe("memory");
 		expect(acceptMode(sink)).toBe("memory");
 		const reader = await ZipReader.open(saved[0]);

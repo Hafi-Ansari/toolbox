@@ -695,7 +695,7 @@ export interface ReceiveSink {
 	abort(reason: string): Promise<void>;
 }
 
-/** What a sink factory gets (zip name "Photos from <peer>.zip", §8.2). */
+/** What a sink factory gets (zip name "Transfer from <peer> <date time>.zip", §8.2). */
 export interface SinkContext {
 	peerName: string;
 	batch: number;
@@ -743,6 +743,7 @@ export type PageToSw = SwOpen | SwPing;
 
 /** Service worker → page (on the client or the port). */
 export type SwToPage =
+	| { type: "opened"; id: string } // it holds the open entry: the page may fetch the download now
 	| { type: "started"; id: string } // its fetch handler ran: the download began
 	| { want: number } // credit: the page may send at most this many more bytes
 	| { type: "cancelled"; id: string }; // the download was cancelled in the browser

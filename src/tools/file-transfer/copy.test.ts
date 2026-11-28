@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { bytes, doneText, duration, endedText, errorText, eta, pathText, percent, rate, seen } from "./copy.ts";
 import { cleanName, EMOJIS } from "./profile.ts";
+import { zipName } from "./tuning.ts";
 import type { BatchProgress } from "./types.ts";
 
 const GiB = 1024 ** 3;
@@ -21,7 +22,7 @@ const batch = (patch: Partial<BatchProgress>): BatchProgress => ({
 	lanes: 6,
 	startedAt: 0,
 	endedAt: 552_000,
-	location: "Photos from Calm Otter.zip",
+	location: "Transfer from Calm Otter 2026-11-28 10.11.zip",
 	declineReason: null,
 	cancelledBy: null,
 	error: null,
@@ -63,8 +64,13 @@ describe("file transfer copy", () => {
 	it("says how a batch ended, on each side", () => {
 		expect(doneText(batch({}), "Calm Otter")).toBe("Sent 214 files (38.4 GB) in 9 min 12 s · avg 71.2 MB/s");
 		expect(doneText(batch({ side: "receive" }), "Calm Otter")).toBe(
-			"Saved 214 files to your downloads as Photos from Calm Otter.zip",
+			"Saved 214 files to your downloads as Transfer from Calm Otter 2026-11-28 10.11.zip",
 		);
+		// The memory fallback only hands the zip to the browser, which then asks: not "Saved" yet.
+		expect(doneText(batch({ side: "receive", mode: "memory", files: 1 }), "Calm Otter")).toBe(
+			"Received 1 file as Transfer from Calm Otter 2026-11-28 10.11.zip. To keep it, choose Save or Download when your browser asks.",
+		);
+		expect(zipName("Calm Otter", new Date(2026, 0, 5, 9, 7))).toBe("Transfer from Calm Otter 2026-01-05 09.07.zip");
 		expect(doneText(batch({ side: "receive", mode: "folder", location: "Pictures/Trip", skipped: 3 }), "x")).toBe(
 			"Saved 211 files to Pictures/Trip · 3 already there were skipped",
 		);

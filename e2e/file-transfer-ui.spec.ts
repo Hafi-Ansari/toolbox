@@ -111,7 +111,9 @@ test("receive: offer card, accept as zip, cancel asks first, connection lost", a
 	await connect(page);
 	await page.evaluate(() => window.__ftMock?.offer({ count: 214, total: 38.4 * 1024 ** 3 }));
 	await expect(page.getByText("Calm Otter is sending 214 files")).toBeVisible();
-	await expect(page.getByText("Saves as one .zip in your downloads: Photos from Calm Otter.zip")).toBeVisible();
+	await expect(
+		page.getByText(/^Saves as one \.zip in your downloads: Transfer from Calm Otter \d{4}-\d\d-\d\d \d\d\.\d\d\.zip$/),
+	).toBeVisible();
 	await page.getByRole("button", { name: "Accept" }).click();
 	await expect(page.getByText("Receiving from Calm Otter", { exact: true })).toBeVisible();
 	await expect(page.getByRole("progressbar")).toBeVisible();

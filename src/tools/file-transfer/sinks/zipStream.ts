@@ -1,4 +1,4 @@
-// The default receive mode (SPEC §8.2): one prompt-free download, "Photos from <peer>.zip", streamed
+// The default receive mode (SPEC §8.2): one prompt-free download, "Transfer from <peer> <date time>.zip", streamed
 // through the service worker public/ft-sw.js. Store-only ZIP64 with modified times, an exact
 // Content-Length from zipSize, keepalive pings, and a started-check: if the service worker's fetch
 // handler doesn't run within 5 s, `begin()` falls back to the memory sink (§8.4) before any byte is
@@ -56,6 +56,9 @@ function randomId(): string {
 	return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+/** Fetch the download after this even without "opened" (a service worker cached from before it existed). */
+const OPENED_FALLBACK_MS = 1000;
+
 const wait = (ms: number) => new Promise<false>((resolve) => setTimeout(() => resolve(false), ms));
 
 /** One streamed download through the service worker. */
@@ -82,21 +85,32 @@ export class SwDownload {
 			onStarted = resolve;
 		});
 		this.started = Promise.race([started, wait(timeoutMs)]);
+		this.frame = document.createElement("iframe");
+		this.frame.hidden = true;
+		this.frame.title = "Download";
+		const src = `${ZIP_STREAM.scope}${id}/${encodeURIComponent(name)}`;
+		// Fetch only once the worker holds the entry ("opened"): the message and the fetch reach it by
+		// different routes, and a fetch that arrives first gets "This download has ended." (404). A worker
+		// from before "opened" existed never answers, so fetch anyway after a short wait.
+		let fetched = false;
+		const fetchNow = () => {
+			if (fetched || this.closed || this.error) return;
+			fetched = true;
+			this.frame.src = src;
+		};
+		setTimeout(fetchNow, OPENED_FALLBACK_MS);
 		this.port.onmessage = (event: MessageEvent<SwToPage>) => {
 			const msg = event.data;
 			if ("want" in msg) {
 				this.credit += msg.want;
 				this.pump();
-			} else if (msg.type === "started") onStarted(true);
+			} else if (msg.type === "opened") fetchNow();
+			else if (msg.type === "started") onStarted(true);
 			else if (msg.type === "cancelled") this.fail(new FtError("sink-error", "The download was cancelled."));
 		};
 		const open: SwOpen = { type: "open", id, name, length, port: channel.port2 };
 		sw.postMessage(open, [channel.port2]);
 		this.ping = setInterval(() => sw.postMessage({ type: "ping" }), ZIP_STREAM.pingMs);
-		this.frame = document.createElement("iframe");
-		this.frame.hidden = true;
-		this.frame.title = "Download";
-		this.frame.src = `${ZIP_STREAM.scope}${id}/${encodeURIComponent(name)}`;
 		document.body.append(this.frame);
 	}
 

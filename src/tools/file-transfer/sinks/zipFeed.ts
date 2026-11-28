@@ -8,9 +8,9 @@ import { FtError, type ManifestFile } from "../types.ts";
 import { sanitizePaths, sanitizeSegment } from "./paths.ts";
 import { type ZipEntrySpec, zipSize } from "./zipSize.ts";
 
-/** The download's file name: "Photos from Calm Otter.zip", sanitized like any path segment. */
-export function downloadName(peerName: string): string {
-	return sanitizeSegment(zipName(peerName)) || "Photos.zip";
+/** The download's file name: "Transfer from Calm Otter 2026-11-28 10.11.zip", sanitized like any path segment. */
+export function downloadName(peerName: string, at: Date = new Date()): string {
+	return sanitizeSegment(zipName(peerName, at)) || "Transfer.zip";
 }
 
 export interface ZipPlan {
