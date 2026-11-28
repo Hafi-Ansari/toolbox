@@ -51,6 +51,8 @@ export function errorText(code: FtErrorCode, who = "They"): string {
 			return `${who === "They" ? "This" : `${who}'s`} browser can't receive this much. Ask them to use Chrome, Edge or Firefox on a computer.`;
 		case "sink-error":
 			return "Couldn't save the files. The disk may be full, or permission to the folder was taken back.";
+		case "read-error":
+			return "Couldn't read one of the files. It may have been moved, renamed or changed while it was being sent. Send again.";
 		default:
 			// signal-error and every other server code
 			return "Couldn't reach the server. Check your connection and try again.";
@@ -154,6 +156,11 @@ export function endedText(p: BatchProgress, who: string): string {
 				return `Connection lost. ${who}'s download stopped partway. Send again to start a new one.`;
 			return "Connection lost. Send again to finish: files already saved are skipped.";
 		case "failed":
+			// The two errors that come from the other side's files or disk, told from each side.
+			if (p.error === "read-error" && p.side === "receive")
+				return `${who} couldn't read one of the files (it may have been moved or changed while sending), so the transfer stopped.`;
+			if (p.error === "sink-error" && p.side === "send")
+				return `${who} couldn't save the files. Their disk may be full, or they took back permission to the folder.`;
 			return errorText(p.error ?? "protocol", who);
 		default:
 			return "";

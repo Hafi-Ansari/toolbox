@@ -62,6 +62,8 @@ interface LaneState {
 	/** Unordered: the file whose range this lane is streaming now. */
 	hold: number | null;
 	dead: boolean;
+	/** performance.now() of the lane's last ack advance (or its first pull). */
+	movedAt: number;
 }
 
 /** Unordered queue node: one file's ranges still to hand out (file-local [start, end) pairs). */
@@ -173,6 +175,7 @@ export class Scheduler {
 		w = Math.min(w, st.assigned);
 		this.ackedSum += w - st.acked;
 		st.acked = w;
+		st.movedAt = performance.now();
 		while (st.items.length > 0) {
 			const it = st.items[0] as Item;
 			if (it.laneStart + it.len > w) break;
@@ -219,12 +222,42 @@ export class Scheduler {
 		this.changed.notify();
 	}
 
+	/**
+	 * Ordered mode, head-of-line (§7.4): when every lane holding the byte at the contiguous mark has had no
+	 * ack for `staleMs`, offer that lane's unacked items again (from the mark on), so other lanes deliver
+	 * them while it is stuck. The receiver drops whichever copy comes second. Returns true when something
+	 * was requeued.
+	 */
+	hedge(staleMs = 0): boolean {
+		if (!this.ordered) return false;
+		const c = this.ackedC;
+		if (c >= this.total) return false;
+		const now = performance.now();
+		const holding = [...this.lanes.values()].filter(
+			(st) => !st.dead && st.items.some((it) => it.g <= c && c < it.g + it.len),
+		);
+		// Nobody holds it (it waits in the queue), or a copy is moving on a live lane.
+		if (holding.length === 0 || holding.some((st) => now - st.movedAt < staleMs)) return false;
+		let added = false;
+		for (const st of holding)
+			for (const it of st.items) {
+				const r: [number, number] = [Math.max(c, it.g), it.g + it.len];
+				if (r[0] >= r[1] || this.requeued.some(([s, e]) => s <= r[0] && r[1] <= e)) continue;
+				let i = 0;
+				while (i < this.requeued.length && (this.requeued[i] as [number, number])[0] < r[0]) i++;
+				this.requeued.splice(i, 0, r);
+				added = true;
+			}
+		if (added) this.changed.notify();
+		return added;
+	}
+
 	/* ---------- internals */
 
 	private lane(key: number): LaneState {
 		let st = this.lanes.get(key);
 		if (!st) {
-			st = { assigned: 0, acked: 0, items: [], hold: null, dead: false };
+			st = { assigned: 0, acked: 0, items: [], hold: null, dead: false, movedAt: performance.now() };
 			this.lanes.set(key, st);
 		}
 		return st;

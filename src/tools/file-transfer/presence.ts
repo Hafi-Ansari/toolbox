@@ -5,7 +5,7 @@
 //   active    visible, interaction within 2 min        3 s (server's limits.pollMs.active)
 //   idle      visible, no interaction for 2 min        10 s
 //   hidden    document.hidden                          60 s
-//   off       the Hidden switch is on                  60 s, with hidden: true
+//   off       the Hidden switch is on                  10 s (60 s in a hidden tab), with hidden: true
 //   pending   a request either way is waiting          1 s, for at most 60 s
 //   handshake accepted, lane 0 not open yet            3 s, ended after 30 s
 //   connected lanes open                               10 s (60 s while the tab is hidden)
@@ -153,9 +153,12 @@ export function createPresence(opts: PresenceOptions): Presence {
 			case "idle":
 				return pollMs.idle;
 			case "hidden":
-			case "off":
 			case "away":
 				return pollMs.hidden;
+			case "off":
+				// Hidden from the list, but an invite-link request (which expires after 30 s) must still be
+				// seen in time while the tab is open in front: the idle rate. 60 s once the tab is hidden too.
+				return env.hidden() ? pollMs.hidden : pollMs.idle;
 			case "pending":
 				return POLL.pendingMs;
 			case "handshake":

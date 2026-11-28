@@ -2,9 +2,9 @@
 // sinks/ or collect.ts directly: it gets everything through one `FtDeps` object, so the same UI runs
 // against the real implementations (WP1–WP4) or against the mocks in mock.ts.
 //
-// WP6: set `REAL` below to `() => import("./real.ts").then((m) => m.realDeps())`, where real.ts builds an
-// `FtDeps` from the real modules. The mocks stay reachable with `?mock` in the URL (or
-// `window.__ftUseMock = true` in an init script), for UI tests and demos, and are only ever loaded then.
+// `REAL` loads real.ts (WP6), which builds an `FtDeps` from the real modules. The mocks stay reachable
+// with `?mock` in the URL (or `window.__ftUseMock = true` in an init script), for UI tests and demos, and
+// are only ever loaded then.
 import type {
 	Connect,
 	CreateEngine,
@@ -66,8 +66,8 @@ export interface FtDeps {
 	demo: boolean;
 }
 
-/** WP6 sets this to load the real implementations. While it's null, the page runs on the mocks. */
-const REAL: (() => Promise<FtDeps>) | null = null;
+/** Loads the real implementations. While it's null, the page runs on the mocks. */
+const REAL: (() => Promise<FtDeps>) | null = () => import("./real.ts").then((m) => m.realDeps());
 
 declare global {
 	interface Window {

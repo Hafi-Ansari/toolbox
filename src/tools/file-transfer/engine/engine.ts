@@ -506,7 +506,8 @@ class Engine implements TransferEngine {
 			files: b.sources,
 			sched,
 			tuning: this.t,
-			chunk: chunkSize(undefined, this.t),
+			// §7.3: min(tuning.chunk, remote sctp.maxMessageSize).
+			chunk: chunkSize(this.session.maxMessageSize, this.t),
 			onProgress: () => this.bump(b),
 			onError: () => {
 				if (!isRunning(b.p.phase)) return;

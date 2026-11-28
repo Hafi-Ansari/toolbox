@@ -165,4 +165,20 @@ describe("Scheduler, ordered", () => {
 		]);
 		expect(got[3]).toEqual([400, 500]);
 	});
+
+	it("hedges: offers the range holding the contiguous mark again, once until it is taken", () => {
+		const s = new Scheduler([4 * MiB], [], true, T);
+		const a = s.next(1) as Work; // [0, 1 MiB) on lane 1
+		const b = s.next(2) as Work; // [1, 2 MiB) on lane 2
+		expect([a.g, b.g]).toEqual([0, MiB]);
+		s.ack(1, MiB / 2);
+		s.contiguous(MiB / 2); // lane 1 delivered half of its range, then stalled
+		expect(s.hedge()).toBe(true);
+		expect(s.hedge()).toBe(false); // already waiting for a lane
+		const copy = s.next(3) as Work;
+		expect([copy.g, copy.len]).toEqual([MiB / 2, MiB / 2]);
+		s.contiguous(4 * MiB);
+		expect(s.hedge()).toBe(false); // nothing left
+		expect(new Scheduler([MiB], [], false, T).hedge()).toBe(false); // unordered never hedges
+	});
 });

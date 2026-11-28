@@ -42,6 +42,12 @@ export interface Tuning {
 	maxOpenFiles: number;
 	/** Memory fallback (§8.4): largest batch it accepts; bigger ones are declined with `too-big`. */
 	memoryMax: number;
+	/**
+	 * Ordered sink: when the contiguous mark hasn't moved for this long, the range holding it is offered
+	 * again to another lane (WP6). A lane whose SCTP association backs off after losses can sit still for
+	 * tens of seconds, and in zip mode every other lane waits for it. A copy costs at most `zipRange`.
+	 */
+	hedgeMs: number;
 }
 
 export const tuning: Tuning = {
@@ -59,6 +65,7 @@ export const tuning: Tuning = {
 	coalesce: 4 * MiB,
 	maxOpenFiles: 16,
 	memoryMax: 1 * GiB,
+	hedgeMs: 1000,
 };
 
 /** The spec's defaults, so a benchmark run can restore them. */

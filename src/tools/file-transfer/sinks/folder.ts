@@ -88,6 +88,8 @@ class FolderSink implements ReceiveSink {
 	private dirs = new Map<string, Promise<FileSystemDirectoryHandle>>();
 	private free: number;
 	private slotWaiters: Array<() => void> = [];
+	/** `write()` calls waiting for the disk to catch up; while any wait, slots are granted at once (no deadlock). */
+	private pressure = 0;
 	private buffered = 0;
 	private error: FtError | null = null;
 	private aborted = false;
@@ -157,9 +159,18 @@ class FolderSink implements ReceiveSink {
 			if (run.len === run.buf.length) this.flushRun(file, st, run);
 		}
 		if (this.buffered > this.maxBuffered) {
-			// Too much held back: write out every partial run and wait for the disk.
-			for (const [i, s] of this.state) for (const r of [...s.runs]) this.flushRun(i, s, r);
-			await Promise.all([...this.state.values()].map((s) => s.chain));
+			// Too much held back: write out every partial run and wait for the disk. This is the only place a
+			// lane waits, so while it does, files waiting for an open-file slot get one at once, beyond
+			// `maxOpenFiles` if need be. Otherwise a lane could wait for a file that waits for a slot held by a
+			// file whose missing bytes sit behind that same lane: a deadlock (WP6; see sinks.test.ts).
+			this.pressure++;
+			try {
+				this.grantAll();
+				for (const [i, s] of this.state) for (const r of [...s.runs]) this.flushRun(i, s, r);
+				await Promise.all([...this.state.values()].map((s) => s.chain));
+			} finally {
+				this.pressure--;
+			}
 			this.check();
 		}
 	}
@@ -268,14 +279,27 @@ class FolderSink implements ReceiveSink {
 		return st.writable;
 	}
 
+	/** An open-file slot. `free` may go below zero while a lane waits for the disk (see `write`). */
 	private async acquire(): Promise<void> {
-		while (this.free <= 0) await new Promise<void>((resolve) => this.slotWaiters.push(resolve));
-		this.free--;
+		if (this.free > 0 || this.pressure > 0) {
+			this.free--;
+			return;
+		}
+		// Resolved by `release` or `grantAll`, which hand their slot over (already counted in `free`).
+		await new Promise<void>((resolve) => this.slotWaiters.push(resolve));
 	}
 
 	private release(): void {
-		this.free++;
-		this.slotWaiters.shift()?.();
+		const next = this.slotWaiters.shift();
+		if (next) next();
+		else this.free++;
+	}
+
+	private grantAll(): void {
+		for (const next of this.slotWaiters.splice(0)) {
+			this.free--;
+			next();
+		}
 	}
 
 	/** "a/b/" → the handle, created as needed. */

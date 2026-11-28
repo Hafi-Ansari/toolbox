@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { ZipReader } from "../../../lib/zipReader.ts";
-import { acceptMode, type ManifestFile, type ReceivedFile, type ReceiveSink } from "../types.ts";
+import { createEngine } from "../engine/engine.ts";
+import { SessionPair } from "../engine/fakes.ts";
+import { checkTuning, DEFAULT_TUNING, type Tuning } from "../tuning.ts";
+import { acceptMode, type BatchProgress, type ManifestFile, type ReceivedFile, type ReceiveSink } from "../types.ts";
 import { createFolderSink } from "./folder.ts";
 import { createMemorySink, fitsInMemory } from "./memory.ts";
 import { createTestSink } from "./test.ts";
@@ -311,4 +314,93 @@ describe("folder sink", () => {
 		expect((root.at(names[0]) as FakeFile | undefined)?.data ?? new Uint8Array(0)).toHaveLength(0);
 		await expect(sink.write(0, 5000, contents[0].subarray(5000, 6000))).rejects.toMatchObject({ code: "sink-error" });
 	});
+});
+
+/* ---------- folder mode can't deadlock on its open-file limit (WP6) */
+
+describe("folder sink open-file limit", () => {
+	it("never makes a lane wait for a file that waits for a slot", async () => {
+		// One lane, maxOpenFiles 1: file A takes the slot and still misses its tail, which comes on this
+		// lane after B. B's first bytes overflow the buffer, so the lane waits for the disk. Before WP6 the
+		// lane then waited for B's writable, which waited for A's slot, which waited for the lane.
+		FakeDir.open = 0;
+		FakeDir.maxOpen = 0;
+		const root = new FakeDir("P");
+		const files: ManifestFile[] = [
+			{ i: 0, path: "a.bin", size: 20, mtime: 0 },
+			{ i: 1, path: "b.bin", size: 40, mtime: 0 },
+		];
+		const data = files.map((f) => bytesOf(f.size, f.i + 1));
+		const sink = createFolderSink(asRoot(root), { maxOpenFiles: 1, coalesce: 10, maxBuffered: 20 });
+		await sink.begin(files);
+		await sink.write(0, 0, data[0].subarray(0, 10));
+		const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("deadlock")), 2000));
+		await Promise.race([sink.write(1, 0, data[1].subarray(0, 30)), timeout]);
+		await sink.write(0, 10, data[0].subarray(10));
+		await sink.write(1, 30, data[1].subarray(30));
+		await Promise.all([sink.finishFile(0), sink.finishFile(1)]);
+		await sink.finish();
+		expect((root.at("a.bin") as FakeFile).data).toEqual(data[0]);
+		expect((root.at("b.bin") as FakeFile).data).toEqual(data[1]);
+		expect(FakeDir.open).toBe(0);
+	});
+
+	it("finishes a folder batch over 8 lanes with one slow lane and big files split in ranges", async () => {
+		// The scheduler gives each big file up to maxWritersPerFile lanes; a slow lane can hold the tails of
+		// many files whose heads arrived on fast lanes, so more files than maxOpenFiles can be half written.
+		const KiB = 1024;
+		const t: Tuning = {
+			...DEFAULT_TUNING,
+			lanes: 8,
+			chunk: 8 * KiB,
+			highWater: 64 * KiB,
+			lowWater: 16 * KiB,
+			laneWindow: 128 * KiB,
+			ackEvery: 32 * KiB,
+			readBlock: 32 * KiB,
+			rangeMax: 256 * KiB,
+			maxWritersPerFile: 2,
+			coalesce: 32 * KiB,
+			maxOpenFiles: 16,
+		};
+		checkTuning(t);
+		FakeDir.open = 0;
+		FakeDir.maxOpen = 0;
+		const pair = new SessionPair(8, (i) =>
+			i === 7 ? { delayMs: 150, bytesPerTick: 4 * KiB } : { bytesPerTick: 256 * KiB },
+		);
+		const a = createEngine(pair.a, t);
+		const b = createEngine(pair.b, t);
+		// 40 files just over one range: a 256 KiB head and a small tail each, plus a few whole ones.
+		const sizes = Array.from({ length: 40 }, (_, i) => (i % 5 === 4 ? 100 * KiB + i : 256 * KiB + 1 + i));
+		const send = sizes.map((n, i) => ({
+			path: `Big/F${i}.bin`,
+			file: new File([bytesOf(n, 100 + i) as Uint8Array<ArrayBuffer>], `F${i}.bin`),
+		}));
+		const root = new FakeDir("Pictures");
+		const finals: Promise<BatchProgress>[] = [a, b].map(
+			(e, k) =>
+				new Promise((resolve) =>
+					e.on((ev) => {
+						if (ev.type === "offer" && k === 1)
+							void b.accept(
+								ev.offer.batch,
+								createFolderSink(asRoot(root), { coalesce: t.coalesce, maxOpenFiles: 16, maxBuffered: 512 * KiB }),
+							);
+						if (ev.type === "progress" && ["done", "failed", "cancelled", "interrupted"].includes(ev.progress.phase))
+							resolve(ev.progress);
+					}),
+				),
+		);
+		a.send(send);
+		const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("stalled")), 20_000));
+		const [sent, received] = await Promise.race([Promise.all(finals), timeout]);
+		expect(sent.phase).toBe("done");
+		expect(received.phase).toBe("done");
+		for (const [i, n] of sizes.entries())
+			expect((root.at(`Big/F${i}.bin`) as FakeFile).data).toEqual(bytesOf(n, 100 + i));
+		expect(FakeDir.open).toBe(0);
+		a.dispose();
+		b.dispose();
+	}, 30_000);
 });
