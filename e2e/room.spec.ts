@@ -110,8 +110,11 @@ test.describe("Shared room", () => {
 		await guest.getByRole("button", { name: new RegExp(name) }).click();
 		await expect(text(guest)).toBeEnabled();
 
-		owner.once("dialog", (d) => d.accept());
 		await owner.getByRole("button", { name: "End room" }).click();
+		await owner
+			.getByRole("dialog", { name: "End this room for everyone?" })
+			.getByRole("button", { name: "End room" })
+			.click();
 		await expect(owner.getByRole("button", { name: "New room" })).toBeVisible();
 		await expect(guest.getByText("This room has ended")).toBeVisible({ timeout: 8000 });
 		await guest.getByRole("button", { name: "All rooms" }).click();
@@ -200,8 +203,11 @@ test.describe("Shared room files", () => {
 		await expect(files(guest).getByRole("button", { name: "Download doomed.bin" })).toBeVisible({ timeout: 8000 });
 		const id = new URL(owner.url()).searchParams.get("r");
 
-		owner.once("dialog", (d) => d.accept());
 		await owner.getByRole("button", { name: "End room" }).click();
+		await owner
+			.getByRole("dialog", { name: "End this room for everyone?" })
+			.getByRole("button", { name: "End room" })
+			.click();
 		await expect(guest.getByText("This room has ended")).toBeVisible({ timeout: 8000 });
 		await expect(guest.getByText("The text and files are gone.")).toBeVisible();
 		expect(await (await request.get(`/api/rooms?id=${id}&files=1`)).json()).toEqual({ gone: true });

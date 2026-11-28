@@ -8,6 +8,28 @@ import { SOURCE_URL } from "./config.ts";
 // One lazy component per tool, created once.
 const lazyTools = new Map<string, ComponentType>(tools.map((t) => [t.id, lazy(t.load)]));
 
+/**
+ * Once the first page is up and the browser is idle, fetch every tool's code (small JS and CSS
+ * chunks; workers and WASM still load only when a tool uses them). The first open of a tool is
+ * then as instant as the second, on touch screens and direct links too, not just after a hover.
+ * Skipped when the visitor asked to save data.
+ */
+function usePreloadTools() {
+	useEffect(() => {
+		const connection = (navigator as { connection?: { saveData?: boolean } }).connection;
+		if (connection?.saveData) return;
+		const preload = () => {
+			for (const t of tools) void t.load().catch(() => {});
+		};
+		if ("requestIdleCallback" in window) {
+			const id = requestIdleCallback(preload, { timeout: 3000 });
+			return () => cancelIdleCallback(id);
+		}
+		const id = setTimeout(preload, 1500);
+		return () => clearTimeout(id);
+	}, []);
+}
+
 function Logo() {
 	return (
 		<svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true">
@@ -95,6 +117,7 @@ function NotFound() {
 
 export function App() {
 	const [location] = useLocation();
+	usePreloadTools();
 	// A tool owns its path and everything below it (e.g. /read/:bookId), staying mounted across sub-routes.
 	const tool = tools.find((t) => location === t.path || location.startsWith(`${t.path}/`));
 	// Braces matter: newer browsers return a Promise from scrollTo, and an effect must not return one.

@@ -71,12 +71,15 @@ test.describe("PDF → TXT", () => {
 		await open(page);
 		await text(page).fill("my own edit\n");
 		await expect(page.getByText("· edited")).toBeVisible();
-		page.once("dialog", (d) => d.dismiss());
 		await page.getByRole("radio", { name: "Prose" }).click({ force: true });
+		await page.getByRole("dialog", { name: "Discard your edits?" }).getByRole("button", { name: "Cancel" }).click();
 		await expect(page.getByRole("radio", { name: "Poetry" })).toBeChecked();
 		await expect(text(page)).toHaveValue("my own edit\n");
-		page.once("dialog", (d) => d.accept());
 		await page.getByRole("radio", { name: "Prose" }).click({ force: true });
+		await page
+			.getByRole("dialog", { name: "Discard your edits?" })
+			.getByRole("button", { name: "Discard edits" })
+			.click();
 		await expect(page.getByRole("radio", { name: "Prose" })).toBeChecked();
 		// Prose joins printed lines into sentences, one per line.
 		await expect(text(page)).toHaveValue(

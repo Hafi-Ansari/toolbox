@@ -1,5 +1,6 @@
 import * as Comlink from "comlink";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { confirm } from "../../lib/confirm.tsx";
 import { detectFile } from "../../lib/detect.ts";
 import { formatBytes, formatDuration, swapExtension } from "../../lib/format.ts";
 import { Icon } from "../../lib/Icon.tsx";
@@ -311,11 +312,17 @@ function Review({
 		setCaretWork(null); // work indexes belong to the previous conversion
 	}, [generated]);
 
-	const discardEdits = () =>
-		!edited || window.confirm("This rebuilds the text from the PDF and discards your edits. Continue?");
+	const discardEdits = async () =>
+		!edited ||
+		confirm({
+			title: "Discard your edits?",
+			message: "This rebuilds the text from the PDF, and the changes you made to it are lost.",
+			confirmLabel: "Discard edits",
+			tone: "danger",
+		});
 
-	const update = (patch: Partial<Options>) => {
-		if (!discardEdits()) return;
+	const update = async (patch: Partial<Options>) => {
+		if (!(await discardEdits())) return;
 		setOptions((o) => {
 			const next = { ...o, ...patch };
 			saveOptions(next);
@@ -399,8 +406,8 @@ function Review({
 		showOverride(o);
 	}, [text, generated, lines]);
 
-	const changeOverrides = (next: Override[], show: Override) => {
-		if (!discardEdits()) return;
+	const changeOverrides = async (next: Override[], show: Override) => {
+		if (!(await discardEdits())) return;
 		pending.current = show;
 		setSelected(null);
 		void onMode(mode, next);
@@ -477,7 +484,7 @@ function Review({
 			<div className={s.toolbar}>
 				<div className={s.fileRow}>
 					<Chip badge="PDF" name={file.name} meta={summary} to="TXT" />
-					<Button variant="ghost" icon="x" onClick={() => discardEdits() && onReset()}>
+					<Button variant="ghost" icon="x" onClick={async () => (await discardEdits()) && onReset()}>
 						Change file
 					</Button>
 				</div>
@@ -490,7 +497,7 @@ function Review({
 							{ value: "poetry", label: "Poetry" },
 							{ value: "prose", label: "Prose" },
 						]}
-						onChange={(m) => discardEdits() && void onMode(m)}
+						onChange={async (m) => (await discardEdits()) && void onMode(m)}
 					/>
 					{mode === "poetry" && (
 						<Pills
@@ -580,8 +587,8 @@ function Review({
 							{edited && (
 								<Button
 									variant="ghost"
-									onClick={() => {
-										if (!discardEdits()) return;
+									onClick={async () => {
+										if (!(await discardEdits())) return;
 										setText(generated);
 										setEdited(false);
 									}}

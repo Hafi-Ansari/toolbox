@@ -51,7 +51,7 @@ export function OcrPanel({
 	/** The text has been edited by hand. */
 	edited: boolean;
 	/** Asks before OCR rebuilds edited text; false keeps the edits. */
-	confirmDiscard: () => boolean;
+	confirmDiscard: () => Promise<boolean>;
 	/** Converts again with the current mode and options, so the OCR results show. */
 	onConverted: () => Promise<void>;
 }) {
@@ -95,7 +95,7 @@ export function OcrPanel({
 
 	/** Converts again, asking first if the text was edited since the run started. */
 	async function reconvert(): Promise<boolean> {
-		if (!agreed.current && !latest.current.confirmDiscard()) {
+		if (!agreed.current && !(await latest.current.confirmDiscard())) {
 			setMessage({
 				tone: "info",
 				text: "OCR is done, and your edited text was kept. Revert the text or switch modes to see what OCR read.",
@@ -108,7 +108,7 @@ export function OcrPanel({
 
 	async function start(targets: number[]) {
 		if (!targets.length || job) return;
-		if (!latest.current.confirmDiscard()) return;
+		if (!(await latest.current.confirmDiscard())) return;
 		agreed.current = latest.current.edited;
 		const id = ++run.current;
 		const live = () => id === run.current;
