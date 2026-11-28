@@ -1,9 +1,20 @@
-import { type ComponentType, lazy, type MouseEvent, type ReactNode, Suspense, useEffect, useState } from "react";
+import {
+	type ComponentType,
+	type CSSProperties,
+	lazy,
+	type MouseEvent,
+	type PointerEvent,
+	type ReactNode,
+	Suspense,
+	useEffect,
+	useState,
+} from "react";
 import { Link, useLocation } from "wouter";
 import { Icon } from "../lib/Icon.tsx";
 import { type ToolMeta, tools } from "../tools/registry.ts";
 import s from "./App.module.css";
 import { SOURCE_URL } from "./config.ts";
+import { Hero } from "./Hero.tsx";
 
 /*
  * Tool code loading. Each tool's code is fetched once (one shared promise), and once it has
@@ -72,7 +83,7 @@ function usePreloadTools(opened: ToolMeta | undefined) {
 
 function Logo() {
 	return (
-		<svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true">
+		<svg className={s.logo} width="22" height="22" viewBox="0 0 32 32" aria-hidden="true">
 			<rect x="3" y="3" width="12" height="12" rx="3" fill="var(--accent)" />
 			<rect x="17" y="3" width="12" height="12" rx="3" fill="var(--border-strong)" />
 			<rect x="3" y="17" width="12" height="12" rx="3" fill="var(--border-strong)" />
@@ -87,24 +98,33 @@ function useTitle(title: string) {
 	}, [title]);
 }
 
+/** Cards light up under the pointer: the hovered card gets the pointer's position as CSS variables. */
+function spotlight(e: PointerEvent<HTMLUListElement>) {
+	const card = (e.target as Element).closest("a");
+	if (!card) return;
+	const r = card.getBoundingClientRect();
+	card.style.setProperty("--mx", `${e.clientX - r.left}px`);
+	card.style.setProperty("--my", `${e.clientY - r.top}px`);
+}
+
 function Home() {
-	useTitle("Toolbox");
+	useTitle("Toolbox · Files, transformed in your browser");
 	return (
 		<div className={s.home}>
-			<section className={s.hero}>
-				<p className={s.kicker}>Local-first utilities</p>
-				<h1>Small, fast tools that run entirely in your browser.</h1>
-				<p className={s.heroLead}>
-					No accounts, no limits, and almost nothing leaves your device. Pick a tool to get started.
-				</p>
+			<Hero />
+			<section className={s.toolsSection} id="tools" aria-labelledby="tools-heading">
+				<div className={s.sectionHead}>
+					<h2 id="tools-heading">The tools</h2>
+					<p>Each opens in a moment and works offline once loaded. Nothing to install, nothing to sign up for.</p>
+				</div>
+				<ul className={s.grid} onPointerMove={spotlight}>
+					{tools.map((t, i) => (
+						<li key={t.id} style={{ "--i": i } as CSSProperties}>
+							<ToolCard tool={t} />
+						</li>
+					))}
+				</ul>
 			</section>
-			<ul className={s.grid}>
-				{tools.map((t) => (
-					<li key={t.id}>
-						<ToolCard tool={t} />
-					</li>
-				))}
-			</ul>
 		</div>
 	);
 }
@@ -235,10 +255,15 @@ export function App() {
 					<Logo />
 					<span>toolbox</span>
 				</HomeLink>
-				<span className={s.status}>
-					<span className={s.dot} aria-hidden="true" />
-					Runs locally
-				</span>
+				<nav className={s.nav} aria-label="Site">
+					<a href={SOURCE_URL} target="_blank" rel="noreferrer" className={s.navLink}>
+						<Icon name="code" size={14} /> Source
+					</a>
+					<span className={s.status}>
+						<span className={s.dot} aria-hidden="true" />
+						Runs locally
+					</span>
+				</nav>
 			</header>
 
 			<main className={s.main}>

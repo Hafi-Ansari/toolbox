@@ -51,7 +51,7 @@ async function disablePicker(page: Page) {
 
 async function openTool(page: Page) {
 	await page.goto("/");
-	await expect(page.getByRole("heading", { level: 1 })).toContainText("run entirely in your browser");
+	await expect(page.getByRole("heading", { level: 1 })).toContainText("right in your browser");
 	await page.getByRole("link", { name: /EPUB ⇄ PDF/ }).click();
 	await expect(page).toHaveURL(/\/epub-pdf$/);
 	await expect(page.getByText("loading engine")).toBeHidden({ timeout: 30_000 });
