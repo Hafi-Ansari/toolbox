@@ -17,9 +17,26 @@ import {
 import { createMemorySink, type MemorySinkOptions } from "./memory.ts";
 import { downloadName, planZip, ZipFeed } from "./zipFeed.ts";
 
+/**
+ * WebKit: every browser on iOS (Chrome and Firefox there are WebKit too) and Safari on the Mac. Its page
+ * reads a service worker's download response, so the started-check passes and every byte flows, but
+ * the download that "Save…" then starts never arrives: it sat at 0 KB in Chrome on an iPhone. So
+ * WebKit uses the memory fallback, as SPEC §8.4 intends.
+ */
+export function isWebKitOnly(nav: Pick<Navigator, "userAgent" | "platform" | "maxTouchPoints"> = navigator): boolean {
+	const ua = nav.userAgent;
+	if (/iPad|iPhone|iPod/.test(ua)) return true;
+	// iPadOS reports itself as a Mac; a touch screen gives it away.
+	if (nav.platform === "MacIntel" && nav.maxTouchPoints > 1) return true;
+	return /Safari\//.test(ua) && /Version\//.test(ua) && !/Chrome|Chromium|Edg|OPR|Firefox/.test(ua);
+}
+
 /** §14 feature detection. The started-check decides the rest. */
 export const canStreamZip = (): boolean =>
-	typeof navigator !== "undefined" && "serviceWorker" in navigator && typeof ReadableStream === "function";
+	typeof navigator !== "undefined" &&
+	"serviceWorker" in navigator &&
+	typeof ReadableStream === "function" &&
+	!isWebKitOnly();
 
 /** Bytes the page queues for the service worker before `write()` waits. */
 const PAGE_HIGH_WATER = 8 * 1024 * 1024;

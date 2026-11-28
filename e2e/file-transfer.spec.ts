@@ -47,10 +47,11 @@ async function open(
 	ip: string,
 	name: string,
 	emoji: string,
-	opts: { testSink?: boolean; ordered?: boolean; touch?: boolean } = {},
+	opts: { testSink?: boolean; ordered?: boolean; touch?: boolean; userAgent?: string } = {},
 ): Promise<Peer> {
 	const ctx = await browser.newContext({
 		extraHTTPHeaders: { "x-real-ip": ip },
+		...(opts.userAgent ? { userAgent: opts.userAgent } : {}),
 		...(opts.touch ? { hasTouch: true, isMobile: true, viewport: { width: 500, height: 900 } } : {}),
 	});
 	const page = await ctx.newPage();
@@ -222,6 +223,46 @@ test("presence, request and accept, then a folder batch both ways as streamed zi
 	await expect(a.page.getByText("You're Brisk Fox")).toBeVisible();
 	await expect(b.page.getByRole("heading", { name: "Connection to Brisk Fox lost" })).toBeVisible({ timeout: 10_000 });
 	await expect(c.page.getByRole("button", { name: /^Brisk Fox, same network$/ })).toBeVisible({ timeout: 20_000 });
+});
+
+// Chrome on an iPhone is WebKit: a service-worker download stalls at 0 KB there, so it must take the
+// memory fallback, say "Received" (not "Saved"), and keep the zip for "Save .zip".
+const IPHONE_CHROME =
+	"Mozilla/5.0 (iPhone; CPU iPhone OS 19_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/142.0.7444.0 Mobile/15E148 Safari/604.1";
+
+test("an iPhone receives through the memory fallback and can save the zip again", async ({ browser }) => {
+	const ip = nextIp();
+	const a = await open(browser, ip, "Brisk Fox", "🦊");
+	const b = await open(browser, ip, "Calm Otter", "🦦", { userAgent: IPHONE_CHROME });
+	await connect(a, b);
+	const files = { "IMG_0001.HEIC": bytesOf(3 * MiB + 11, 8), "notes.txt": Buffer.from("from the phone test") };
+	await a.page
+		.locator('input[type="file"]:not([webkitdirectory])')
+		.setInputFiles(
+			Object.entries(files).map(([name, buffer]) => ({ name, mimeType: "application/octet-stream", buffer })),
+		);
+	await expect(b.page.getByText("Brisk Fox is sending 2 files")).toBeVisible({ timeout: 15_000 });
+	await expect(
+		b.page.getByText(/^Arrives as one \.zip, Transfer from Brisk Fox .+\.zip\. Your browser asks/),
+	).toBeVisible();
+
+	// The automatic download comes when the zip is complete, not in the Accept click.
+	const [first] = await Promise.all([
+		b.page.waitForEvent("download", { timeout: 30_000 }),
+		b.page.getByRole("button", { name: "Accept" }).click(),
+	]);
+	await expect(b.page.getByText(/^Received 2 files as Transfer from Brisk Fox .+\.zip\. To keep it/)).toBeVisible({
+		timeout: 30_000,
+	});
+	await expectZip(await first.path(), files);
+
+	// The zip stays on the page: "Save .zip" downloads the same archive again.
+	const [second] = await Promise.all([
+		b.page.waitForEvent("download"),
+		b.page.getByRole("button", { name: "Save .zip" }).click(),
+	]);
+	expect(second.suggestedFilename()).toBe(first.suggestedFilename());
+	await expectZip(await second.path(), files);
 });
 
 test("decline, then cancel mid-transfer from the sender", async ({ browser }) => {

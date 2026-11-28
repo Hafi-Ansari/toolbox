@@ -666,11 +666,17 @@
 	gap: var(--s-3);
 }
 
-.offerPrimary {
+.offerPrimary,
+.savedActions {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
 	gap: var(--s-2) var(--s-3);
+}
+
+.savedActions .muted {
+	flex-basis: 100%;
+	font-size: var(--fs-sm);
 }
 
 .decline {

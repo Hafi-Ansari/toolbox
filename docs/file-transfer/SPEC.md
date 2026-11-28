@@ -567,6 +567,13 @@ For browsers where the zip stream fails: build the same zip into a `Blob` in mem
 then trigger **one** download with an object URL. A bigger batch is declined with `too-big`. The sender sees
 "Calm Otter's browser can't receive this much. Ask them to use Chrome, Edge or Firefox on a computer."
 
+WebKit (every iOS browser, and Safari on the Mac; `isWebKitOnly` in `sinks/zipStream.ts`) always uses this
+fallback. Its page reads a service worker's download response, so the started-check passes, but the download that
+"Save…" then starts never arrives (Chrome on an iPhone sat at 0 KB). After the automatic download the zip stays
+on the page (`sinks/lastZip.ts`, released when the next memory batch begins): the done note says "Received …", and
+offers **Save .zip** (a download in a fresh tap) and, where `navigator.canShare` takes files, **Share…** (the
+share sheet's "Save to Files").
+
 ### 8.5 Test sink (`sinks/test.ts`)
 
 Selected when `window.__sendTestSink === true` (set by Playwright's `addInitScript`). It keeps a running SHA-256
